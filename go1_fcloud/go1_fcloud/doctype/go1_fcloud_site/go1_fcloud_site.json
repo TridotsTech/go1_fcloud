@@ -1,0 +1,317 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-01-13 13:16:35.790359",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "site_name",
+  "project",
+  "column_break_hscl0",
+  "status",
+  "version",
+  "column_break_dohdx",
+  "region",
+  "plan",
+  "section_break_ao8f",
+  "url",
+  "bench_name",
+  "section_break_5agh",
+  "bench",
+  "group",
+  "column_break_gqne",
+  "bench_status",
+  "installed",
+  "section_break_makr",
+  "site",
+  "custom",
+  "bench_data",
+  "amended_from",
+  "plans",
+  "is_valid",
+  "is_dropped",
+  "backup_tab",
+  "database",
+  "database_file",
+  "database_size",
+  "private_url",
+  "private_file",
+  "private_size",
+  "public_url",
+  "public_file",
+  "public_size",
+  "site_jobs",
+  "jobs",
+  "site_data",
+  "new_apps"
+ ],
+ "fields": [
+  {
+   "fieldname": "site_name",
+   "fieldtype": "Data",
+   "label": "Site Name",
+   "read_only_depends_on": "eval:!doc.__islocal;"
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Version",
+   "read_only_depends_on": "eval:!doc.__islocal",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "region",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Region",
+   "read_only_depends_on": "eval:!doc.__islocal",
+   "reqd": 1
+  },
+  {
+   "fieldname": "plan",
+   "fieldtype": "Select",
+   "label": "Plan",
+   "read_only_depends_on": "eval:!doc.__islocal",
+   "reqd": 1
+  },
+  {
+   "fieldname": "group",
+   "fieldtype": "Data",
+   "label": "Bench Id",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Go1 FCloud Site",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "url",
+   "fieldtype": "Data",
+   "label": "Site URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "backup_tab",
+   "fieldtype": "Tab Break",
+   "label": "Backup"
+  },
+  {
+   "fieldname": "database",
+   "fieldtype": "Data",
+   "label": "Database URL"
+  },
+  {
+   "fieldname": "private_url",
+   "fieldtype": "Data",
+   "label": "Private URL"
+  },
+  {
+   "fieldname": "public_url",
+   "fieldtype": "Data",
+   "label": "Public URL"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_dropped",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Is Dropped",
+   "read_only": 1
+  },
+  {
+   "fieldname": "database_file",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Database File"
+  },
+  {
+   "fieldname": "database_size",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Database Size"
+  },
+  {
+   "fieldname": "private_file",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Private File"
+  },
+  {
+   "fieldname": "private_size",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Private Size"
+  },
+  {
+   "fieldname": "public_file",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Public File"
+  },
+  {
+   "fieldname": "public_size",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Public Size"
+  },
+  {
+   "fieldname": "bench",
+   "fieldtype": "Select",
+   "label": "Bench",
+   "read_only_depends_on": "eval:!doc.__islocal;"
+  },
+  {
+   "fieldname": "bench_data",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Bench Data"
+  },
+  {
+   "fieldname": "column_break_gqne",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bench_status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Bench Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_makr",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "fieldname": "section_break_5agh",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "fieldname": "installed",
+   "fieldtype": "Table",
+   "label": "Apps on Bench",
+   "options": "Installed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Data",
+   "label": "Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_ao8f",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "fieldname": "site",
+   "fieldtype": "Table",
+   "label": "Apps",
+   "options": "Apps"
+  },
+  {
+   "fieldname": "custom",
+   "fieldtype": "Table",
+   "label": "Apps on Site",
+   "options": "Installed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "site_jobs",
+   "fieldtype": "Tab Break",
+   "label": "Jobs"
+  },
+  {
+   "fieldname": "jobs",
+   "fieldtype": "Table",
+   "label": "Jobs",
+   "options": "Go1 FCloud Site Job",
+   "read_only": 1
+  },
+  {
+   "fieldname": "project",
+   "fieldtype": "Link",
+   "label": "Project",
+   "options": "Project"
+  },
+  {
+   "fieldname": "bench_name",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Bench Name",
+   "options": "Go1 FCloud Bench",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_hscl0",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_dohdx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "plans",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Plans",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_valid",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Is Valid"
+  },
+  {
+   "fieldname": "site_data",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Site Data"
+  },
+  {
+   "fieldname": "new_apps",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "New Site Apps"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2024-05-04 12:03:56.224837",
+ "modified_by": "Administrator",
+ "module": "Go1 Fcloud",
+ "name": "Go1 FCloud Site",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "site_name"
+}

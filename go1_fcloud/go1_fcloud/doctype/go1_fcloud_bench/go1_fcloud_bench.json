@@ -1,0 +1,229 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-01-06 18:47:52.088566",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "bench_tab",
+  "bench",
+  "version",
+  "region",
+  "column_break_oqey",
+  "id",
+  "project",
+  "status",
+  "noof_apps",
+  "installed_apps",
+  "section_break_ycsk",
+  "apps",
+  "custom",
+  "data",
+  "app_json",
+  "ssh_certificate",
+  "command",
+  "repository_data",
+  "is_dropped",
+  "sites_tab",
+  "linked_sites",
+  "installable_apps",
+  "jobs_tab",
+  "jobs",
+  "deploy_tab",
+  "deploy"
+ ],
+ "fields": [
+  {
+   "fieldname": "bench",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Bench",
+   "read_only_depends_on": "eval:!doc.__islocal"
+  },
+  {
+   "fieldname": "data",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Data"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "noof_apps",
+   "fieldtype": "Data",
+   "label": "No.of Apps",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_oqey",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "id",
+   "fieldtype": "Data",
+   "label": "ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Version",
+   "read_only_depends_on": "eval:!doc.__islocal"
+  },
+  {
+   "fieldname": "apps",
+   "fieldtype": "Table",
+   "label": "Apps",
+   "options": "Apps"
+  },
+  {
+   "fieldname": "installed_apps",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Installed Apps",
+   "read_only": 1
+  },
+  {
+   "fieldname": "app_json",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "App Json"
+  },
+  {
+   "fieldname": "section_break_ycsk",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "region",
+   "fieldtype": "Select",
+   "label": "Region",
+   "read_only_depends_on": "eval:!doc.__islocal"
+  },
+  {
+   "fieldname": "ssh_certificate",
+   "fieldtype": "Long Text",
+   "label": "SSH Certificate",
+   "read_only": 1
+  },
+  {
+   "fieldname": "command",
+   "fieldtype": "Data",
+   "label": "SSH Command",
+   "read_only": 1
+  },
+  {
+   "fieldname": "custom",
+   "fieldtype": "Table",
+   "label": "Apps",
+   "options": "Installed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "repository_data",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Repository Data"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_dropped",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Is Dropped",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sites_tab",
+   "fieldtype": "Tab Break",
+   "label": "Sites"
+  },
+  {
+   "fieldname": "linked_sites",
+   "fieldtype": "Table",
+   "label": "Linked Sites",
+   "options": "Go1 FCloud Bench Site",
+   "read_only": 1
+  },
+  {
+   "fieldname": "installable_apps",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Installable Apps"
+  },
+  {
+   "fieldname": "bench_tab",
+   "fieldtype": "Tab Break",
+   "label": "Bench"
+  },
+  {
+   "fieldname": "jobs_tab",
+   "fieldtype": "Tab Break",
+   "label": "Jobs"
+  },
+  {
+   "fieldname": "jobs",
+   "fieldtype": "Table",
+   "label": "Jobs",
+   "options": "Go1 FCloud Bench Job",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deploy_tab",
+   "fieldtype": "Tab Break",
+   "label": "Deploy"
+  },
+  {
+   "fieldname": "deploy",
+   "fieldtype": "Table",
+   "label": "Deploy",
+   "options": "Go1 FCloud Bench Deploy",
+   "read_only": 1
+  },
+  {
+   "fieldname": "project",
+   "fieldtype": "Link",
+   "label": "Project",
+   "options": "Project"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [
+  {
+   "group": "Sites",
+   "link_doctype": "Go1 FCloud Site",
+   "link_fieldname": "bench_name"
+  }
+ ],
+ "modified": "2024-05-02 13:36:34.770509",
+ "modified_by": "Administrator",
+ "module": "Go1 Fcloud",
+ "name": "Go1 FCloud Bench",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "bench"
+}

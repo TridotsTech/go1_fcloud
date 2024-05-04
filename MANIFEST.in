@@ -1,0 +1,18 @@
+include MANIFEST.in
+include requirements.txt
+include *.json
+include *.md
+include *.py
+include *.txt
+recursive-include go1_fcloud *.css
+recursive-include go1_fcloud *.csv
+recursive-include go1_fcloud *.html
+recursive-include go1_fcloud *.ico
+recursive-include go1_fcloud *.js
+recursive-include go1_fcloud *.json
+recursive-include go1_fcloud *.md
+recursive-include go1_fcloud *.png
+recursive-include go1_fcloud *.py
+recursive-include go1_fcloud *.svg
+recursive-include go1_fcloud *.txt
+recursive-exclude go1_fcloud *.pyc

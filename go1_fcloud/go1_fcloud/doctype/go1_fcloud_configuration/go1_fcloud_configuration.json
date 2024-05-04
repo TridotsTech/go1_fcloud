@@ -1,0 +1,66 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-03-25 17:46:03.434984",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "x_press_team_id",
+  "api_access_section",
+  "api_key",
+  "column_break_1ewtk",
+  "api_secret"
+ ],
+ "fields": [
+  {
+   "fieldname": "x_press_team_id",
+   "fieldtype": "Data",
+   "label": "X-Press-Team ID"
+  },
+  {
+   "fieldname": "api_access_section",
+   "fieldtype": "Section Break",
+   "label": "Api Access"
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Data",
+   "label": "API Key"
+  },
+  {
+   "fieldname": "column_break_1ewtk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "api_secret",
+   "fieldtype": "Password",
+   "label": "API Secret"
+  }
+ ],
+ "hide_toolbar": 1,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2024-04-15 18:00:03.634437",
+ "modified_by": "Administrator",
+ "module": "Go1 Fcloud",
+ "name": "Go1 FCloud Configuration",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
