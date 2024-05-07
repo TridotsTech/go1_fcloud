@@ -95,7 +95,11 @@ class Go1FCloudSite(Document):
 	# 	except Exception:
 	# 		frappe.log_error("Error creating site", frappe.get_traceback())
 
+
 #jaffar
+
+	
+
 	@frappe.whitelist()
 	def create_site(self,args):
 		try:
@@ -105,9 +109,9 @@ class Go1FCloudSite(Document):
 			frappe.log_error("all apps",new_apps)
 			frappe.log_error("Sub domain Name",args.name)
 			for app in new_apps:
-				frappe.log_error("app name",app['title'])
+				frappe.log_error("app name",app)
 				apps.append(app['title'])
-			if not args.bench:
+			if args.bench:
 				param = {
 					'site':{
 						"name": args.name,
@@ -134,16 +138,12 @@ class Go1FCloudSite(Document):
 							params=param,method="POST")
 			frappe.log_error("create site response",response)
 			return response
-
-			# token,team_id = self.get_token()
-			# headers = {"Authorization": token, "X-Press-Team": team_id}
-			# response = requests.post("https://frappecloud.com/api/method/press.api.site.new",headers=headers, json=param)
-			# frappe.log_error("create response",response.json())
-			# site = response.json() ;site_url = site["message"]
-			# return response.json()
 		except Exception:
 			frappe.log_error("Create Site Error",frappe.get_traceback())
 
+	frappe.whitelist()
+	def create_site_enqueue(self,args):
+		frappe.enqueue(self.create_site(), queue = "short",args=args)
 
 	@frappe.whitelist()
 	def drop_site(self):

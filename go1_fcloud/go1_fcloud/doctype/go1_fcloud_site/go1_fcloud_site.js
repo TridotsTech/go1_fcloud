@@ -9,9 +9,6 @@ frappe.ui.form.on("Go1 FCloud Site", {
             if (is_special) {
                 frappe.throw("site name should contain only letters,numbers and hyphens not any special characters")
             }
-        } else {
-            frappe.msgprint("Site Name is mandatory")
-            validated = false
         }
 
         if (frm.doc.bench) {
@@ -44,6 +41,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
             frappe.call({
                 doc: frm.doc,
                 method: "site_exists",
+                async: false,
                 args: {
                     "subdomain": frm.doc.site_name,
                     "domain": "frappe.cloud"
@@ -146,6 +144,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                     let plan = value[0].trim()
                     frappe.call({
                         doc: frm.doc,
+                        // method: "create_site",
                         method: "create_site",
                         args: {
                             "group": frm.doc.group,
@@ -155,19 +154,23 @@ frappe.ui.form.on("Go1 FCloud Site", {
                             "plan": plan,
                             "name": frm.doc.site_name
                         },
-                        async: false,
+                        async: true,
+                        freeze: true,
+                        freeze_message: "Creating Site...",
                         callback: function (r) {
                             // console.log(r.message)
                             url = r.message.message.site
+                            frm.set_value('url', url)
+                            frm.refresh_field('url')
+                            frm.save()
                         }
                     })
-                    frm.set_value('url', url)
-                    frm.refresh_field('url')
-                    frm.save()
+
                 })
             } else {
                 if (!frm.doc.is_dropped) {
                     frm.add_custom_button("Get Status", function () {
+                        
                         var data
                         frappe.call({
                             doc: frm.doc,
@@ -362,6 +365,9 @@ frappe.ui.form.on("Go1 FCloud Site", {
                                 args: {
                                     "id": frm.doc.url
                                 },
+                                async:true,
+                                freeze:true,
+                                freeze_message:"Migrating site <b>"+frm.doc.url+"</b> ......",
                                 callback: function (r) {
                                     if (Object.keys(r.message) == 0) {
                                         frappe.msgprint("Site Migrated")
@@ -381,7 +387,9 @@ frappe.ui.form.on("Go1 FCloud Site", {
                     frappe.call({
                         doc: frm.doc,
                         method: "schedule_backup",
-                        async: false,
+                        async: true,
+                        freeze:true,
+                        freeze_message:"Scheduling Backup..",
                         callback: function (r) {
                             if (Object.keys(r.message) == 0) {
                                 frappe.msgprint("Backup Scheduled.Click <b>Get Backup</b> to retrieve latest backup")
@@ -449,7 +457,9 @@ frappe.ui.form.on("Go1 FCloud Site", {
                         frappe.call({
                             doc: frm.doc,
                             method: "admin_login",
-                            async: false,
+                            async: true,
+                            freeze:true,
+                            freeze_message:"Logging in as administrator....",
                             callback: function (r) {
                                 // console.log(r.message)
                                 // console.log(r.message.message.sid)
@@ -988,7 +998,7 @@ frappe.ui.form.on('Apps', {
                     let apps = i.group.apps
                     for (let app of apps) {
                         if (app.repository != 'frappe') {
-                            site_apps += `\n${app.repository}`
+                            site_apps += `\n${app.app}`
                         }
                     }
                 }

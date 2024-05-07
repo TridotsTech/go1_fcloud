@@ -66,7 +66,7 @@ class Go1FCloudBench(Document):
             # frappe.log_error("Get response code",response.status_code)
         elif method.upper() == 'POST':
             response = requests.post(url=url, headers=headers, json=params)
-            # frappe.log_error("Post response code",response.status_code)
+            frappe.log_error("Post response code",response.status_code)
             # frappe.log_error("post json",response.json())
         return response.json()
     
@@ -612,7 +612,7 @@ def sync_bench():
         data = make_request(url="https://frappecloud.com/api/method/press.api.bench.all",
                                         params={"bench_filter":{"status":"All","tag":""}},method="POST")
         cloud_bench = data["message"]
-        # frappe.log_error("all bench",cloud_bench)
+        frappe.log_error("all bench",cloud_bench)
         bench_data= make_request(url = "https://frappecloud.com/api/method/press.api.bench.options",
                                      method="POST")
         local_bench = frappe.get_all("Go1 FCloud Bench",filters={"is_dropped":0},fields=["*"])
