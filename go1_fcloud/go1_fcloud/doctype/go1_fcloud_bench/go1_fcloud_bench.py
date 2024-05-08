@@ -66,7 +66,7 @@ class Go1FCloudBench(Document):
             # frappe.log_error("Get response code",response.status_code)
         elif method.upper() == 'POST':
             response = requests.post(url=url, headers=headers, json=params)
-            frappe.log_error("Post response code",response.status_code)
+            # frappe.log_error("Post response code",response.status_code)
             # frappe.log_error("post json",response.json())
         return response.json()
     
@@ -674,9 +674,11 @@ def make_request(url, method='GET', params=None,headers=None):
 
     if method.upper() == 'GET':
         response = requests.get(url=url, headers=headers, params=params)
+        # frappe.log_error("headers",headers)
         # frappe.log_error("Get response code",response.status_code)
     elif method.upper() == 'POST':
         response = requests.post(url=url, headers=headers, json=params)
+        # frappe.log_error("headers",headers)
         # frappe.log_error("Post response code",response.status_code)
     return response.json()
 def get_token():

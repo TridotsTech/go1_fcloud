@@ -109,7 +109,7 @@ class Go1FCloudSite(Document):
 			frappe.log_error("all apps",new_apps)
 			frappe.log_error("Sub domain Name",args.name)
 			for app in new_apps:
-				frappe.log_error("app name",app)
+				# frappe.log_error("app name",app)
 				apps.append(app['title'])
 			if args.bench:
 				param = {
@@ -133,10 +133,10 @@ class Go1FCloudSite(Document):
 						"plan": args.plan,
 					}	
 				}
-			frappe.log_error("new site param",param)
+			# frappe.log_error("new site param",param)
 			response=self.make_request(url ="https://frappecloud.com/api/method/press.api.site.new",
 							params=param,method="POST")
-			frappe.log_error("create site response",response)
+			# frappe.log_error("create site response",response)
 			return response
 		except Exception:
 			frappe.log_error("Create Site Error",frappe.get_traceback())
@@ -487,7 +487,7 @@ class Go1FCloudSite(Document):
 			
 
 
-@frappe.whitelist()
+# @frappe.whitelist()
 def sync_site():
 	try:
 		import json
@@ -548,6 +548,13 @@ def sync_site():
 				cloud_doc.insert(ignore_permissions = True)   
 	except Exception:
 		frappe.log_error('sync site error',frappe.get_traceback())
+
+@frappe.whitelist()
+def sync_site_enqueue():
+	try:
+		frappe.enqueue(sync_site(),queue = 'short')
+	except Exception:
+		frappe.log_error("sync site enqueue error",frappe.get_traceback())
 
 def make_request(url, method=None, params=None,headers=None):
     token, team_id = get_token()
