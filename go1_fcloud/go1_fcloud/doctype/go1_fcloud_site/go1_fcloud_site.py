@@ -550,9 +550,9 @@ def sync_site():
 		frappe.log_error('sync site error',frappe.get_traceback())
 
 @frappe.whitelist()
-def sync_site_enqueue():
+def sync_site_enqueue_long():
 	try:
-		frappe.enqueue(sync_site(),queue = 'short')
+		frappe.enqueue(sync_site,queue = 'long')
 	except Exception:
 		frappe.log_error("sync site enqueue error",frappe.get_traceback())
 
