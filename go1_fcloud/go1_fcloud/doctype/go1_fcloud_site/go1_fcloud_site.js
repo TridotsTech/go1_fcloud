@@ -170,7 +170,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
             } else {
                 if (!frm.doc.is_dropped) {
                     frm.add_custom_button("Get Status", function () {
-                        
+
                         var data
                         frappe.call({
                             doc: frm.doc,
@@ -180,9 +180,11 @@ frappe.ui.form.on("Go1 FCloud Site", {
                                 "group": frm.doc.group,
                                 "bench": frm.doc.bench
                             },
-                            async: false,
+                            async: true,
+                            freeze:true,
+                            freeze_message:'Retrieving status of site <b>'+frm.doc.url+'</b>',
                             callback: function (r) {
-                                // console.log(r.message)
+                                console.log(r.message)
                                 let data = r.message
                                 frm.doc.custom = ""
                                 for (var app of data[0].site_app) {
@@ -192,55 +194,31 @@ frappe.ui.form.on("Go1 FCloud Site", {
                                     row.title = app.name
                                     row.app_name = app.repo
                                 }
-                                frm.set_value("status", data[1].status)
-                            }
-                        });
-                        // Get Installed apps - private bench
-                        if (frm.doc.bench) {
-                            let in_apps = []
-                            frappe.call({
-                                doc: frm.doc,
-                                method: "get_installed_apps",
-                                args: {
-                                    "title": frm.doc.group
-                                },
-                                async: false,
-                                callback: function (r) {
-                                    frm.set_value("installed", "")
-                                    var apps = r.message
-                                    // console.log("site apps")
-                                    // console.log(apps)
-                                    for (let app of apps) {
-                                        // console.log(app.name)
-                                        let row = frm.add_child("installed")
-                                        // // row.title = app.repository,
-                                        row.app_name = app.name
-                                    }
+                                frm.set_value("status", data[0].site_status)
+                                frm.set_value('bench_status',data[0].bench_status)
+                                //Installed apps on bench
+                                frm.set_value("installed", "")
+                                var apps = data[0].bench_app
+                                for (let app of apps) {
+                                    // console.log(app.name)
+                                    let row = frm.add_child("installed")
+                                    // // row.title = app.repository,
+                                    row.app_name = app.name
                                 }
-                            })
-                        }
-                        // frm.refresh_field("installed")
-                        //Get site jobs
-                        frappe.call({
-                            doc: frm.doc,
-                            method: "get_site_jobs",
-                            args: {
-                                "id": frm.doc.url
-                            },
-                            async: false,
-                            callback: function (r) {
-                                // console.log(r.message)
+
+                                //Site Jobs
                                 frm.set_value("jobs", "")
-                                let data = r.message.message
-                                for (let d of data) {
+                                let job_data = data[0].jobs
+                                for (let d of job_data) {
                                     frm.add_child("jobs", {
                                         "title": d.job_type,
                                         "creation1": d.creation,
                                         "status": d.status
                                     })
                                 }
+                                
                             }
-                        })
+                        });
                         frm.save()
                         // frm.set_df_property("installed", "read_only", 1)
                     }, __("Options"))
@@ -365,9 +343,9 @@ frappe.ui.form.on("Go1 FCloud Site", {
                                 args: {
                                     "id": frm.doc.url
                                 },
-                                async:true,
-                                freeze:true,
-                                freeze_message:"Migrating site <b>"+frm.doc.url+"</b> ......",
+                                async: true,
+                                freeze: true,
+                                freeze_message: "Migrating site <b>" + frm.doc.url + "</b> ......",
                                 callback: function (r) {
                                     if (Object.keys(r.message) == 0) {
                                         frappe.msgprint("Site Migrated")
@@ -388,8 +366,8 @@ frappe.ui.form.on("Go1 FCloud Site", {
                         doc: frm.doc,
                         method: "schedule_backup",
                         async: true,
-                        freeze:true,
-                        freeze_message:"Scheduling Backup..",
+                        freeze: true,
+                        freeze_message: "Scheduling Backup..",
                         callback: function (r) {
                             if (Object.keys(r.message) == 0) {
                                 frappe.msgprint("Backup Scheduled.Click <b>Get Backup</b> to retrieve latest backup")
@@ -458,8 +436,8 @@ frappe.ui.form.on("Go1 FCloud Site", {
                             doc: frm.doc,
                             method: "admin_login",
                             async: true,
-                            freeze:true,
-                            freeze_message:"Logging in as administrator....",
+                            freeze: true,
+                            freeze_message: "Logging in as administrator....",
                             callback: function (r) {
                                 // console.log(r.message)
                                 // console.log(r.message.message.sid)
@@ -592,7 +570,9 @@ frappe.ui.form.on("Go1 FCloud Site", {
                     let apps = frm.doc.custom
                     // console.log(apps)
                     for (let a of apps) {
-                        options += `\n${a.title}`
+                        if (a.title != 'frappe') {
+                            options += `\n${a.title}`
+                        }
                     }
                     let d = new frappe.ui.Dialog({
                         title: "Remove Apps",

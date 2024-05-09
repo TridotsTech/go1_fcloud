@@ -103,47 +103,52 @@ class Go1FCloudSite(Document):
 	@frappe.whitelist()
 	def create_site(self,args):
 		try:
-			
-			apps=['frappe']
-			new_apps = args.apps
-			frappe.log_error("all apps",new_apps)
-			frappe.log_error("Sub domain Name",args.name)
-			for app in new_apps:
-				# frappe.log_error("app name",app)
-				apps.append(app['title'])
-			if args.bench:
-				param = {
-					'site':{
-						"name": args.name,
-						"apps": apps,
-						"group": args.group,
-						"cluster": args.cluster,
-						"plan": args.plan,
-						'Subdomain':args.name
-					}	
-				}
+			if args.group:
+				bench_response= self.make_request(url = "https://frappecloud.com/api/method/press.api.bench.get",
+									 params={"name":args.group},method="POST")
+				bench_status = bench_response['message']['status']
+			frappe.log_error("bench status create site",bench_response['message']['status'])
+			if bench_status == "Active":
+				apps=['frappe']
+				new_apps = args.apps
+				frappe.log_error("all apps",new_apps)
+				frappe.log_error("Sub domain Name",args.name)
+				for app in new_apps:
+					# frappe.log_error("app name",app)
+					apps.append(app['title'])
+				if args.bench:
+					param = {
+						'site':{
+							"name": args.name,
+							"apps": apps,
+							"group": args.group,
+							"cluster": args.cluster,
+							"plan": args.plan,
+							'Subdomain':args.name
+						}	
+					}
+				else:
+					#create site on shared bench
+					param = {
+						'site':{
+							"name": args.name,
+							"apps": apps,
+							"group": args.group,
+							"cluster": args.cluster,
+							"plan": args.plan,
+						}	
+					}
+				response=self.make_request(url ="https://frappecloud.com/api/method/press.api.site.new",
+								params=param,method="POST")
+				return response
 			else:
-				#create site on shared bench
-				param = {
-					'site':{
-						"name": args.name,
-						"apps": apps,
-						"group": args.group,
-						"cluster": args.cluster,
-						"plan": args.plan,
-					}	
-				}
-			# frappe.log_error("new site param",param)
-			response=self.make_request(url ="https://frappecloud.com/api/method/press.api.site.new",
-							params=param,method="POST")
-			# frappe.log_error("create site response",response)
-			return response
+				frappe.throw("Check Deploys if bench is deploying or <b>Deploy Bench</b> to Create Site")
 		except Exception:
 			frappe.log_error("Create Site Error",frappe.get_traceback())
 
-	frappe.whitelist()
-	def create_site_enqueue(self,args):
-		frappe.enqueue(self.create_site(), queue = "short",args=args)
+	# frappe.whitelist()
+	# def create_site_enqueue(self,args):
+	# 	frappe.enqueue(self.create_site(), queue = "short",args=args)
 
 	@frappe.whitelist()
 	def drop_site(self):
@@ -229,14 +234,14 @@ class Go1FCloudSite(Document):
 	@frappe.whitelist()
 	def get_status(self,args):
 		try:
-			res_data=[{"site_app":[],"bench_app":[]}]
+			res_data=[{'site_status':"","bench_status":"","site_app":[],"bench_app":[],"jobs":[]}]
 			params={
 				"name":args.title
 			}
 			url="https://frappecloud.com/api/method/press.api.site.get"
 			response = self.make_request(url = url,method="POST",params=params)
 			if("message" in response): #If Site is Active 
-				res_data.append({"status":response["message"]["status"]})
+				res_data[0].update({"site_status":response["message"]["status"]})
 			else:#Else attaching archived with site name to get status
 				params={
 					"name":args.title+".archived"
@@ -244,18 +249,42 @@ class Go1FCloudSite(Document):
 				url="https://frappecloud.com/api/method/press.api.site.get"
 				response = self.make_request(url = url,method="POST",params=params)
 				res_data.append({"status":response["message"]["status"]})
+			if args.group:
+				bench_res = self.make_request(url = "https://frappecloud.com/api/method/press.api.bench.get",
+								  params={'name':args.group},method="POST")
+				if bench_res:
+					res_data[0].update({'bench_status':bench_res['message']['status']})
 			app_response = self.make_request(url="https://frappecloud.com/api/method/press.api.site.installed_apps",
 									params=params,method="POST")
 			for i in app_response["message"]:
 				res_data[0]["site_app"].append({"name":i["app"],"repo":i["repository"]})
 			if args.bench:
-				bench_res = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.apps",
+				bench_app = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.apps",
 										method="POST",params={"name":args.group})
-				if bench_res:
-					for s in bench_res['message']:
+				if bench_app:
+					for s in bench_app['message']:
 						res_data[0]["bench_app"].append({"name":s["name"]})
 			# frappe.log_error("sitebefore bench",res_data)
-			
+			# retrieving site jobs
+			job_params={
+				"doctype": "Agent Job",
+				"filters": {
+					"site": args.title
+				},
+				"order_by": "creation desc",
+				"start": 0,
+				"limit": 5,
+				"limit_start": 0,
+				"limit_page_length": 5,
+				"debug": 0
+			}
+			job_response=self.make_request(url="https://frappecloud.com/api/method/press.api.site.jobs",params=job_params,
+										method="POST")
+			# res_data[0]['jobs'].append({})
+			if job_response:
+				for i in job_response['message']:
+					res_data[0]['jobs'].append(i)
+			# frappe.log_error("site_jobs",job_response)
 			# frappe.log_error("site status",res_data)
 			return res_data
 		except Exception:
