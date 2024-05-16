@@ -21,13 +21,13 @@
    "fieldname": "view_site",
    "fieldtype": "Button",
    "in_list_view": 1,
-   "label": "View SIte"
+   "label": "View Site"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2024-04-15 18:00:05.222966",
+ "modified": "2024-05-16 17:28:10.688101",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Bench Site",

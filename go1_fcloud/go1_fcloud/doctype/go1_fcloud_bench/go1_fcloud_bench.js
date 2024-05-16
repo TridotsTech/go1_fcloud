@@ -6,7 +6,6 @@ frappe.ui.form.on("Go1 FCloud Bench", {
         if (frm.doc.__islocal) {
             var install = frm.doc.apps
             let apps = [], set = []
-            // console.log(install[0].name1)
             if (install[0].title != "frappe") {
                 frappe.throw("First App to install on bench is Frappe")
             }
@@ -25,12 +24,6 @@ frappe.ui.form.on("Go1 FCloud Bench", {
             frappe.throw("Delete duplicate apps")
         }
     },
-    // after_save: function (frm) {
-    //     // console.log("after save triggered.....")
-    //     // console.log(frm.doc.project)
-    //     // console.log(frm.doc.name)
-
-    // },
     before_save: function (frm) {
         let apps = []
         for (let i of frm.doc.apps) {
@@ -70,6 +63,7 @@ frappe.ui.form.on("Go1 FCloud Bench", {
                     callback: function (r) {
                         if (r.message) {
                             let status_data = r.message
+                            // console.log(status_data)
                             var bench = status_data[0].bench.message
                             frm.set_value("status", bench.status)
                             frm.fields_dict.apps.df.hidden = 1
@@ -81,8 +75,6 @@ frappe.ui.form.on("Go1 FCloud Bench", {
                                 in_apps.push(a.name1)
                             }
                             for (var app of apps) {
-                                // console.log("bench apps")
-                                // console.log(app)
                                 if (!in_apps.includes(app.name)) {
                                     let row = frm.add_child("custom")
                                     row.title = app.repository,
@@ -103,27 +95,27 @@ frappe.ui.form.on("Go1 FCloud Bench", {
                                     "title": job.type,
                                     "start": job.start,
                                     "end": job.end,
-                                    "status": job.status
+                                    "status": job.status,
                                 })
                             }
-                            // console.log(data[1].deploys)
+                           
                             for (let dep of data[1].deploys) {
                                 let app_name = ""
                                 for (let a of dep.apps) {
                                     app_name += a + ","
                                 }
-                                // console.log(app_name)
+                            
                                 frm.add_child("deploy", {
                                     "title": dep.name,
                                     "created_on": dep.creation,
                                     "status": dep.status,
                                     "apps": app_name.substring(0, app_name.length - 1)
+                                    // "steps":dep.steps
                                 })
                             }
                             for (let s of data[2]) {
                                 if (frm.doc.id == s["group"]) {
-                                    // console.log("ssssss")
-                                    // console.log(s)
+                                    
                                     let row = frm.add_child("linked_sites")
                                     row.sites = s["name"]
                                 }
@@ -180,7 +172,9 @@ frappe.ui.form.on("Go1 FCloud Bench", {
                             'region': frm.doc.region,
                             "apps": frm.doc.apps
                         },
-                        async: false,
+                        async: true,
+                        freeze:true,
+                        freeze_message:"Creating Bench...",
                         callback: function (r) {
                             // console.log(r.message)
                             var bench = r.message.message
@@ -408,9 +402,9 @@ frappe.ui.form.on("Go1 FCloud Bench", {
                                 // console.log(key)
                                 // console.log(key.ssh_certificate)
                                 frm.set_value("ssh_certificate", "echo '" + key[0].certificate + " '> ~/.ssh/id_rsa-cert.pub")
-                                var command = "ssh " + key[0].command + "@n1-mumbai.frappe.cloud -p 2222"
-                                // console.log(command)
-                                frm.set_value("command", command)
+                                // var command = "ssh " + key[0].command + "@n1-mumbai.frappe.cloud -p 2222"
+                                // // console.log(command)
+                                frm.set_value("command", key[0].command)
                                 frm.save()
                             }
                         }
@@ -1323,7 +1317,7 @@ frappe.ui.form.on("Go1 FCloud Bench Site", {
             },
             callback: function (r) {
                 // console.log(r.message)
-                window.open("/app/fcloud-site/" + r.message, "_blank")
+                window.open("/app/go1-fcloud-site/" + r.message, "_blank")
             }
         })
     }

@@ -8,7 +8,9 @@
  "field_order": [
   "title",
   "creation1",
-  "status"
+  "status",
+  "column_break_vmacp",
+  "steps"
  ],
  "fields": [
   {
@@ -28,12 +30,21 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Status"
+  },
+  {
+   "fieldname": "column_break_vmacp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "steps",
+   "fieldtype": "JSON",
+   "label": "Steps"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2024-04-15 18:00:04.941753",
+ "modified": "2024-05-10 19:47:12.638079",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Site Job",

@@ -11,20 +11,21 @@ frappe.ui.form.on("Go1 FCloud Site", {
             }
         }
 
-        if (frm.doc.bench) {
-            var avail = []
-            var install = frm.doc.site
-            var available = frm.doc.installed
-            // console.log(available)
-            for (let app of available) {
-                avail.push(app.app_name)
-            }
-            for (var i of install) {
-                if (!avail.includes(i.title)) {
-                    frappe.throw(i.title + " is not available on " + frm.doc.bench)
-                }
-            }
-        } else {
+        // if (frm.doc.bench) {
+        //     var avail = []
+        //     var install = frm.doc.site
+        //     var available = frm.doc.installed
+        //     // console.log(available)
+        //     for (let app of available) {
+        //         avail.push(app.app_name)
+        //     }
+        //     for (var i of install) {
+        //         if (!avail.includes(i.title)) {
+        //             frappe.throw(i.title + " is not available on " + frm.doc.bench)
+        //         }
+        //     }
+        // } 
+        if(frm.doc.bench) {
             //Validate Duplicate apps
             var install = frm.doc.site
             let apps = []
@@ -184,7 +185,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                             freeze:true,
                             freeze_message:'Retrieving status of site <b>'+frm.doc.url+'</b>',
                             callback: function (r) {
-                                console.log(r.message)
+                                // console.log(r.message)
                                 let data = r.message
                                 frm.doc.custom = ""
                                 for (var app of data[0].site_app) {
@@ -210,10 +211,14 @@ frappe.ui.form.on("Go1 FCloud Site", {
                                 frm.set_value("jobs", "")
                                 let job_data = data[0].jobs
                                 for (let d of job_data) {
+                                    // let step = d.steps.slice(1,-1)
+                                    // console.log(step)
+                                    // console.log(JSON.parse(step))
                                     frm.add_child("jobs", {
                                         "title": d.job_type,
                                         "creation1": d.creation,
-                                        "status": d.status
+                                        "status": d.status,
+                                        // 'steps':d.steps
                                     })
                                 }
                                 

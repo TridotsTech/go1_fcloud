@@ -9,7 +9,7 @@ frappe.listview_settings['Go1 FCloud Site'] = {
         freeze: true,
         freeze_message: "Syncing Site From Frappe Cloud",
         callback: function (r) {
-          frappe.msgprint("FCloud Site Synced Successfully")
+          frappe.msgprint("FCloud Site Sync Scheduled Successfully")
           setTimeout(function () {
             var dialog = $('.modal:visible')
             if (dialog.length > 0) {

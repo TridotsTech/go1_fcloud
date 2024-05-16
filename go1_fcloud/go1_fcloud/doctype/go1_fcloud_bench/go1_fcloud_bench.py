@@ -295,7 +295,7 @@ class Go1FCloudBench(Document):
                     # frappe.log_error("response ssh",response["message"])
                     # frappe.log_error("cmd",cmd[0])
                     if "ssh_certificate" in res:
-                        message=[{"certificate":res["ssh_certificate"],"command":cmd[0]["name"]}] 
+                        message=[{"certificate":res["ssh_certificate"],"command":"ssh "+cmd[0]["name"]+"@"+cmd[0]['proxy_server']+" -p 2222"}] 
                         return message
                     else:
                         frappe.throw("Try to generate and get access token after 15 or 30 minutes")       
@@ -485,11 +485,23 @@ class Go1FCloudBench(Document):
             dep_response=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.candidates",params=dep_params,method="POST")
             # frappe.log_error("dep response",dep_response)
             for i in dep_response["message"]:
+                # steps=[]
+                # job_steps = self.get_candidate(i['name'])
+                # jobs=""
+                # for j in job_steps:
+                #     steps.append({"name":j['stage']+" - "+j["step"],"status":})
+                # frappe.log_error("jobs",job_steps)
                 res_data[1]["deploys"].append({"name":i["name"],"creation":i["creation"],"status":i["status"],"apps":i["apps"]})
-            # frappe.log_error("all site",res_data)
+            # frappe.log_error("jobs",res_data[0].jobs)
             return res_data
         except Exception:
             frappe.log_error("get all site",frappe.get_traceback())
+
+    def get_candidate(self,job):
+        job_param={"name":job}
+        resp = self.make_request(url = "https://frappecloud.com/api/method/press.api.bench.candidate",method="POST",
+                                 params=job_param)
+        return resp["message"]['build_steps']
     
     @frappe.whitelist()
     def update_app(self,args):
@@ -565,6 +577,7 @@ class Go1FCloudBench(Document):
     def get_site_doc(self,args):
         doc = frappe.db.get_value('Go1 FCloud Site', {'url': args.url}, ['name'])
         return doc
+    
     
     @frappe.whitelist()
     def get_status(self,args):

@@ -110,12 +110,14 @@ class Go1FCloudSite(Document):
 			frappe.log_error("bench status create site",bench_response['message']['status'])
 			if bench_status == "Active":
 				apps=['frappe']
-				new_apps = args.apps
-				frappe.log_error("all apps",new_apps)
-				frappe.log_error("Sub domain Name",args.name)
-				for app in new_apps:
-					# frappe.log_error("app name",app)
-					apps.append(app['title'])
+				
+				# frappe.log_error("all apps",new_apps)
+				# frappe.log_error("Sub domain Name",args.name)
+				if args.apps:
+					new_apps = args.apps
+					for app in new_apps:
+						# frappe.log_error("app name",app)
+						apps.append(app['title'])
 				if args.bench:
 					param = {
 						'site':{
@@ -283,8 +285,18 @@ class Go1FCloudSite(Document):
 			# res_data[0]['jobs'].append({})
 			if job_response:
 				for i in job_response['message']:
+					# steps = []
+					# step_param = {'job':i['name']}
+					# step_response = self.make_request(url = "https://frappecloud.com/api/method/press.api.site.job",
+					# 				   params = step_param,method="POST")
+					# # frappe.log_error(i["name"],step_response['message'])
+					# for step in step_response['message']['steps']:
+					# 	step_dict = {"Step Name":step['step_name'],"Status":step['status'],"Output":step['output']}
+					# 	steps.append(step_dict)
+					# # json_formatted_step = json.dumps(steps, indent=4)
+					# i.update({'steps':steps})
 					res_data[0]['jobs'].append(i)
-			# frappe.log_error("site_jobs",job_response)
+			frappe.log_error("site_jobs",job_response)
 			# frappe.log_error("site status",res_data)
 			return res_data
 		except Exception:
