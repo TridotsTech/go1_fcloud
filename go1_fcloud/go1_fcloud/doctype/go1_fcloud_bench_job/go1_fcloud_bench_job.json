@@ -9,7 +9,11 @@
   "title",
   "start",
   "end",
-  "status"
+  "status",
+  "steps",
+  "step_html",
+  "duration",
+  "completed"
  ],
  "fields": [
   {
@@ -35,12 +39,35 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Status"
+  },
+  {
+   "fieldname": "steps",
+   "fieldtype": "JSON",
+   "hidden": 1,
+   "label": "Steps"
+  },
+  {
+   "fieldname": "step_html",
+   "fieldtype": "HTML",
+   "label": "Step HTML"
+  },
+  {
+   "fieldname": "duration",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Duration"
+  },
+  {
+   "fieldname": "completed",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Completed"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2024-04-15 18:00:05.866374",
+ "modified": "2024-05-22 13:41:01.199041",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Bench Job",

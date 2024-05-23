@@ -108,19 +108,15 @@ class Go1FCloudBench(Document):
                     "title": args.title,
                     "version": args.version,
                     "cluster": args.region,
-                    "server":"",
+                    "server":args.server,#if payload has server id creates bench on server
                     "saas_app":"",
                     "apps":benc_apps
                 }	
             }
-            # frappe.log_error("bench params",params)
-            # try:
+            frappe.log_error("bench params",param)
             token, team_id = self.get_token()
             headers = {"Authorization": token, "X-Press-Team": team_id}
-            # frappe.log_error("headres",headers)
             response = requests.post(url="https://frappecloud.com/api/method/press.api.bench.new",json=param,headers=headers)
-            # frappe.log_error("bench status",response.status_code)
-            # frappe.log_error("bench resposne",response.json())
             resp = response.json()
             bench_name = {"name":resp["message"]}
             get_bench = requests.post(url="https://frappecloud.com/api/method/press.api.bench.get",json=bench_name,headers=headers)
@@ -453,7 +449,6 @@ class Go1FCloudBench(Document):
             res_data=[{"jobs":[]},{"deploys":[]}]
             response = self.make_request(url="https://frappecloud.com/api/method/press.api.site.all",method="POST")
             res_data.append(response["message"])
-            # frappe.log_error("res data before jobs",res_data)
             params={
                     "doctype": "Agent Job",
                     "filters": {
@@ -477,31 +472,45 @@ class Go1FCloudBench(Document):
                 "limit_page_length": 5,
                 "debug": 0
             }
+            #Bench Jobs
             job_response=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.jobs",params=params,method="POST")
-            # frappe.log_error("all site code",response.status_code)
             for i in job_response["message"]:
-                # frappe.log_error("i res",i)
-                res_data[0]["jobs"].append({"type":i['job_type'],"start":i["start"],"end":i["end"],"status":i["status"]})
+                job_steps = self.get_job(i['name'])
+                jobs=[]
+                for j in job_steps['steps']:
+                    jobs.append({'name':j['step_name'],'status':j['status'],'output':j['output']})
+                res_data[0]["jobs"].append({"type":i['job_type'],"start":i["start"],"end":i["end"],
+                                            "status":i["status"],"steps":jobs,'duration':job_steps['duration'],
+                                            'completion':job_steps['completion']})
+            #Deploy Candidate
             dep_response=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.candidates",params=dep_params,method="POST")
-            # frappe.log_error("dep response",dep_response)
             for i in dep_response["message"]:
-                # steps=[]
-                # job_steps = self.get_candidate(i['name'])
-                # jobs=""
-                # for j in job_steps:
-                #     steps.append({"name":j['stage']+" - "+j["step"],"status":})
-                # frappe.log_error("jobs",job_steps)
-                res_data[1]["deploys"].append({"name":i["name"],"creation":i["creation"],"status":i["status"],"apps":i["apps"]})
-            # frappe.log_error("jobs",res_data[0].jobs)
+                steps=[]
+                dep_steps = self.get_candidate(i['name'])
+                for j in dep_steps['steps']:
+                    steps.append({"name":j['stage']+" - "+j["step"],"status":j["status"],
+                                  "command":j["command"] if "command" in j.keys() else None,
+                                  "output":j["output"] if "output" in j.keys() else None,
+                                  })
+                res_data[1]["deploys"].append({"name":i["name"],"creation":i["creation"],"status":i["status"],
+                                               "apps":i["apps"],"steps":steps,
+                                               "completion":dep_steps['completion'],'duration':dep_steps['duration']})
             return res_data
         except Exception:
             frappe.log_error("get all site",frappe.get_traceback())
 
-    def get_candidate(self,job):
-        job_param={"name":job}
+    def get_candidate(self,candidate):
+        dep_param={"name":candidate}
         resp = self.make_request(url = "https://frappecloud.com/api/method/press.api.bench.candidate",method="POST",
-                                 params=job_param)
-        return resp["message"]['build_steps']
+                                 params=dep_param)
+        return {"completion":resp['message']['build_end'] if "build_end" in resp['message'].keys() else None,
+                'duration':resp['message']['build_duration'] if 'build_duration' in resp['message'].keys() else None,'steps':resp["message"]['build_steps']}
+    
+    def get_job(self,job):
+        job_param = {"job":job}
+        resp = self.make_request(url = "https://frappecloud.com/api/method/press.api.site.job",method = "POST",
+                                 params = job_param)
+        return {'duration':resp['message']['duration'],'completion':resp['message']['creation'],'steps':resp['message']['steps']}
     
     @frappe.whitelist()
     def update_app(self,args):
@@ -581,23 +590,108 @@ class Go1FCloudBench(Document):
     
     @frappe.whitelist()
     def get_status(self,args):
+        from frappe.utils import pretty_date,format_duration
+        from datetime import datetime,timedelta
         try:
-            all_status = []
+            # all_status = []
             status = self._get_status(args)
             installed_apps = self.get_installed_apps(args)
-            get_site = self.get_all_site(args)
-            all_status.append({"bench":status})
-            all_status.append({"installed_apps":installed_apps})
-            all_status.append({"sites":get_site})
-            # frappe.log_error("status",all_status)
-            return all_status
+            get_site = self.get_all_site(args) #deploys and jobs
+            update_doc = frappe.get_doc("Go1 FCloud Bench",args.doc)
+            json_data = json.loads(update_doc.data)
+            update_doc.apps =  []
+            update_doc.deploy=[]
+            update_doc.custom = []
+            #Updating apps in bench doc
+            for i in json_data['versions']:
+                if i['name'] == status['message']['version']:
+                    apps = i['apps']
+            for i in installed_apps:
+                update_doc.append('custom',{
+                    'title':i['repository'],
+                    'app_name':i['name']
+                })
+                for j in apps:
+                    if i['name'] == j['name']:
+                        for s in j['sources']:
+                            if s['branch'] == i['branch']:
+                                update_doc.append('apps',{
+                                    'title':i['name'],
+                                    'name1':s['name']
+                                })
+
+            #Updating Deploys in bench doc
+            for i in get_site[1]['deploys']:
+                apps=""
+                for a in i['apps']:
+                    apps+=a+","
+                apps=apps[0:len(apps)-1]
+                fmt_time,duration = "",""
+                if i['completion'] and i['duration']:
+                    fmt_time , duration = self.get_duration(i['completion'],i['duration'])
+                    
+                update_doc.append('deploy',{
+                    'title':i['name'],
+                    'created_on':i['creation'],
+                    "apps":apps,
+                    "status":i['status'],
+                    "steps":json.dumps(i["steps"],indent=4),
+                    "completed":fmt_time if fmt_time else None,
+                    "duration":duration if duration else 0
+                })
+                # frappe.log_error("dep name",i['name'])
+            
+            update_doc.status = status['message']['status'] #updating doc status
+            #Updating Jobs in bench doc
+            update_doc.jobs =[]
+            for i in get_site[0]['jobs']:
+                fmt_time,duration="",""
+                if i['completion'] and i['duration']:
+                    fmt_time , duration = self.get_duration(i['completion'],i['duration'])
+                update_doc.append('jobs',{
+                    "title": i['type'],
+                    "start": i['start'],
+                    "end": i['end'],
+                    "status": i['status'],
+                    "steps":json.dumps(i['steps'],indent = 4),
+                    "completed":fmt_time if fmt_time else None,
+                    "duration":duration if duration else None
+                })
+            update_doc.linked_sites =[]
+            if get_site[2]:
+                for i in get_site[2]:
+                    update_doc.append("linked_sites",{
+                        "sites":i["name"]
+                    })
+            # all_status.append({"bench":status})
+            # all_status.append({"installed_apps":installed_apps})
+            # all_status.append({"sites":get_site})
+            update_doc.save()
+            return "Updated"
             
         except Exception:
             frappe.log_error("Get Status Error",frappe.get_traceback())
+    
+    def get_duration(self,comp_str,dur_str):
+        from frappe.utils import pretty_date,format_duration
+        from datetime import datetime,timedelta
+        current_datetime = datetime.now()
+        specific_datetime = datetime.strptime(comp_str, "%Y-%m-%d %H:%M:%S.%f")
+        time_difference = current_datetime - specific_datetime
+        # frappe.log_error("dep sp time",specific_datetime)
+        # frappe.log_error("depl time diff",time_difference)
+        total_days = time_difference.days
+        if total_days>=1:
+            fmt_time = total_days
+        else:
+            fmt_time = pretty_date(specific_datetime)
+        hours , minutes , seconds = map(float,dur_str.split(':'))
+        duration_seconds = timedelta(hours=hours, minutes=minutes, seconds=seconds).total_seconds()
+        duration = format_duration(duration_seconds)
+        return fmt_time,duration
 
     @frappe.whitelist()
     def edit_title(self,args):
-        
         params = {
             "name":args.name,
             "title":args.title

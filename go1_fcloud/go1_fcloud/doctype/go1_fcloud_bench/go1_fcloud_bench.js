@@ -56,72 +56,81 @@ frappe.ui.form.on("Go1 FCloud Bench", {
                     method: "get_status",
                     args: {
                         "title": frm.doc.id,
+                        "doc":frm.doc.name
                     },
                     async: true,
                     freeze: true,
                     freeze_message: "Retrieving Status....",
                     callback: function (r) {
                         if (r.message) {
-                            let status_data = r.message
-                            // console.log(status_data)
-                            var bench = status_data[0].bench.message
-                            frm.set_value("status", bench.status)
-                            frm.fields_dict.apps.df.hidden = 1
-                            frm.set_value("custom", "")
-                            var apps = status_data[1].installed_apps
-                            //set installed apps
-                            var capps = frm.doc.apps
-                            for (var a of capps) {
-                                in_apps.push(a.name1)
-                            }
-                            for (var app of apps) {
-                                if (!in_apps.includes(app.name)) {
-                                    let row = frm.add_child("custom")
-                                    row.title = app.repository,
-                                        row.app_name = app.name
-                                }
-                            }
-                            frm.refresh_field("custom")
-                            frm.refresh_field("apps")
+                            frm.refresh()
+                            frappe.show_alert('Status Updated');
+                            // let status_data = r.message
+                            // // console.log(status_data)
+                            // var bench = status_data[0].bench.message
+                            // // frm.set_value("status", bench.status)
+                            // frm.fields_dict.apps.df.hidden = 1
+                            // frm.set_value("custom", "")
+                            // var apps = status_data[1].installed_apps
+                            // //set installed apps
+                            // var capps = frm.doc.apps
+                            // for (var a of capps) {
+                            //     in_apps.push(a.name1)
+                            // }
+                            // for (var app of apps) {
+                            //     if (!in_apps.includes(app.name)) {
+                            //         let row = frm.add_child("custom")
+                            //             row.title = app.repository,
+                            //             row.app_name = app.name
+                            //     }
+                            // }
+                            // frm.refresh_field("custom")
+                            // frm.refresh_field("apps")
 
                             //Deploys , Jobs and Sites Update
 
-                            frm.set_value("linked_sites", "")
-                            frm.set_value("jobs", "")
-                            frm.set_value("deploy", "")
-                            let data = status_data[2].sites
-                            for (let job of data[0].jobs) {
-                                frm.add_child("jobs", {
-                                    "title": job.type,
-                                    "start": job.start,
-                                    "end": job.end,
-                                    "status": job.status,
-                                })
-                            }
-                           
-                            for (let dep of data[1].deploys) {
-                                let app_name = ""
-                                for (let a of dep.apps) {
-                                    app_name += a + ","
-                                }
-                            
-                                frm.add_child("deploy", {
-                                    "title": dep.name,
-                                    "created_on": dep.creation,
-                                    "status": dep.status,
-                                    "apps": app_name.substring(0, app_name.length - 1)
-                                    // "steps":dep.steps
-                                })
-                            }
-                            for (let s of data[2]) {
-                                if (frm.doc.id == s["group"]) {
+                            // frm.set_value("linked_sites", "")
+                            // frm.set_value("jobs", "")
+                            // frm.set_value("deploy", "")
+                            // let data = status_data[2].sites
+                            // for (let job of data[0].jobs) {
+                            //     frm.add_child("jobs", {
+                            //         "title": job.type,
+                            //         "start": job.start,
+                            //         "end": job.end,
+                            //         "status": job.status,
                                     
-                                    let row = frm.add_child("linked_sites")
-                                    row.sites = s["name"]
-                                }
-                            }
-                            frm.refresh_field("deploy")
-                            frm.save()
+                            //     })
+                            // }
+                           
+                            // for (let dep of data[1].deploys) {
+                            //     let app_name = ""
+                            //     for (let a of dep.apps) {
+                            //         app_name += a + ","
+                            //     }
+                            //     let steps=[]
+                            //     for(let j of dep.steps){
+                            //         steps.push(j)
+                            //     }
+                            
+                            //     frm.add_child("deploy", {
+                            //         "title": dep.name,
+                            //         "created_on": dep.creation,
+                            //         "status": dep.status,
+                            //         "apps": app_name.substring(0, app_name.length - 1),
+                            //         "steps":JSON.stringify(dep.steps)
+                            //     })
+                            //     // console.log(dep.steps)
+                            //     // console.log(typeof(dep.steps))
+                            // }
+                            // for (let s of data[2]) {
+                            //     if (frm.doc.id == s["group"]) {
+                            //         let row = frm.add_child("linked_sites")
+                            //         row.sites = s["name"]
+                            //     }
+                            // }
+                            // frm.refresh_field("deploy")
+                            // frm.save()
                             // frm.save()
                         }
                     }
@@ -170,16 +179,14 @@ frappe.ui.form.on("Go1 FCloud Bench", {
                             "title": frm.doc.bench,
                             'version': frm.doc.version,
                             'region': frm.doc.region,
-                            "apps": frm.doc.apps
+                            "apps": frm.doc.apps,
+                            "server":frm.doc.server_id
                         },
                         async: true,
                         freeze:true,
                         freeze_message:"Creating Bench...",
                         callback: function (r) {
-                            // console.log(r.message)
                             var bench = r.message.message
-                            // console.log(bench.name)
-                            // console.log(bench.status)
                             frm.set_value("id", bench.name)
                             frm.set_value("status", bench.status)
                             frm.save()
@@ -1320,6 +1327,116 @@ frappe.ui.form.on("Go1 FCloud Bench Site", {
                 window.open("/app/go1-fcloud-site/" + r.message, "_blank")
             }
         })
+    }
+})
+
+frappe.ui.form.on("Go1 FCloud Bench Deploy",{
+    
+    form_render(frm,cdt,cdn){
+        var d = locals[cdt][cdn]
+        let wrapper = frm.fields_dict[d.parentfield].grid.grid_rows_by_docname[cdn].grid_form.fields_dict['step_html'].wrapper
+        const steps = JSON.parse(d.steps)
+        if(d.completed.includes("ago")){
+
+        }
+        let build_duration = (d.completed && d.duration)? (d.completed.includes("ago") && d.duration) ? `<h5 style="color:grey;">Completed ${d.completed} in ${d.duration}</h5>`:`<h5 style="color:grey;">Completed ${d.completed} days ago in ${d.duration}</h5>`:""
+        $(`<h5>Build Log</h5> ${build_duration}`).appendTo(wrapper)
+        var val = 0;
+        for(let i of steps){
+            if(!i.output){
+                i.output = 'No Output!'
+            }
+            if(!i.command){
+                i.command = "No Commmand !"
+            }
+            let symbol = i.status == "Success" ? '<i class="fa fa-check-circle" style="font-size:20px;color:#59ba8b;margin-right:7px;"></i>' : i.status == "Pending"?"<i class='fa fa-clock-o' style='font-size:20px;color:grey;margin-right:7px;'></i>":'<i class="fa fa-times-circle" style="font-size:20px;color:#ff0c0cb0;margin-right:7px;"></i>' 
+            let color = i.status == "Success" ? "#59ba8b" : i.status == "Pending" ? "grey" : "#ff0c0cb0";
+            // let html = `<div style="padding:10px;border:1px solid #8080801c;margin-bottom:10px;border-radius:5px"> ${symbol} <b>${i.name}</b><br><br> <span><b>Status:</b></span> ${i.status} <br> <p><br> <b>Command:</b> <br></p>
+            //             <p style="border:1px solid #80808040;padding:8px;border-radius:7px;"><code>${i.command}</code></p> <p><br> <b>Output:</b> <br></p><p style="border:1px solid #80808040;padding:15px;border-radius:7px;"><code>${i.output}</code></p></div>`;
+
+            let collapse_html = `
+            <div class="card" style="margin-bottom:12px;">
+                <div class="card-header" style ="border-bottom:0px" id="heading" >
+                    <h5 class="mb-0">
+                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse${val}" >
+                        ${symbol} ${i.name}
+                        </button>
+                        <p style="display:inline-block;float:right;color:white;border-radius:5px;background-color:${color};
+                            padding:5px;margin-top:6px;font-size:12px;">${i.status}</p><i class="fa fa-angle-up"></i>
+                    </h5>
+                    
+                </div>
+            
+                <div id="collapse${val}" class="collapse" >
+                    <div class="card-body">
+                        <p><b>Command:</b><br></p>
+                        <p style="border:1px solid #80808040;padding:8px;border-radius:7px;"><code>${i.command}</code></p>
+                        <p><b>Output:</b> <br></p>
+                        <p style="border:1px solid #80808040;padding:15px;border-radius:7px;"><code>${i.output}</code></p>
+                    </div>
+                </div>
+            </div>`
+            $(collapse_html).appendTo(wrapper)
+            val+=1
+        }
+
+        $(document).on('show.bs.collapse', '.collapse', function () {
+            $(this).prev('.card-header').find('.fa.fa-angle-up').removeClass('fa-angle-up').addClass('fa-angle-down');
+        });
+        
+        $(document).on('hide.bs.collapse','.collapse',function(){
+            $(this).prev('.card-header').find('.fa.fa-angle-down').removeClass('fa-angle-down').addClass('fa-angle-up');
+
+        })
+        
+    }
+})
+
+frappe.ui.form.on("Go1 FCloud Bench Job",{
+    form_render(frm,cdt,cdn){
+        var d = locals[cdt][cdn]
+        let wrapper = frm.fields_dict[d.parentfield].grid.grid_rows_by_docname[cdn].grid_form.fields_dict['step_html'].wrapper
+        const steps = JSON.parse(d.steps)
+        let dur = !d.duration ? "0s" :d.duration
+        let build_duration = d.completed ? (d.completed.includes("ago")) ? `<h5 style="color:grey;">Completed ${d.completed} in ${dur}</h5>`:`<h5 style="color:grey;">Completed ${d.completed} days ago in ${dur}</h5>`:""
+        $(`<h5>${d.title}</h5> ${build_duration}`).appendTo(wrapper)
+        var val =0
+        for(let i of steps){
+            if(!i.output){
+                i.output = 'No Output!'
+            }
+            let color = i.status == "Success" ? "#59ba8b" : i.status == "Pending" || i.status == "Skipped" ? "grey" : "#ff0c0cb0";
+            let symbol = i.status == "Success" ? '<i class="fa fa-check-circle" style="font-size:20px;color:#59ba8b;margin-right:7px;"></i>' : i.status == "Skipped" || i.status == "Pending" ? '<i class="fa fa-minus-circle" style="font-size:20px;color:grey;margin-right:7px;"></i>' : '<i class="fa fa-times-circle" style="font-size:20px;color:#ff0c0cb0;margin-right:7px;"></i>' 
+            // let html = `<div style="padding:10px;border:1px solid #8080801c;margin-bottom:10px;border-radius:5px"> ${symbol} <b>${i.name}</b><br><br> <span><b>Status:</b></span> ${i.status} <br><p><br> <b>Output:</b> <br></p><p style="border:1px solid #80808040;padding:15px;border-radius:7px;"><code>${i.output}</code></p></div>`;
+            let collapse_html = `<div class="card" style="margin-bottom:12px;">
+                <div class="card-header" style ="border-bottom:0px" id="heading${val}" >
+                <h5 class="mb-0">
+                    <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse${val}" >
+                    ${symbol} ${i.name}
+                    </button>
+                    <p style="display:inline-block;float:right;color:white;border-radius:5px;background-color:${color};
+                        padding:5px;margin-top:6px;font-size:12px;">${i.status}</p><i class="fa fa-angle-down"></i>
+                </h5>
+                </div>
+            
+                <div id="collapse${val}" class="collapse" >
+                <div class="card-body">
+                    <p><br> <b>Output:</b> <br></p>
+                    <p style="border:1px solid #80808040;padding:15px;border-radius:7px;"><code>${i.output}</code></p>
+                </div>
+                </div>
+            </div>`
+            $(collapse_html).appendTo(wrapper)
+            val+=1
+        }
+        $(document).on('show.bs.collapse', '.collapse', function () {
+            $(this).prev('.card-header').find('.fa.fa-angle-down').removeClass('fa-angle-down').addClass('fa-angle-up');
+        });
+        
+        $(document).on('hide.bs.collapse','.collapse',function(){
+            $(this).prev('.card-header').find('.fa.fa-angle-up').removeClass('fa-angle-up').addClass('fa-angle-down');
+
+        })        
     }
 })
 

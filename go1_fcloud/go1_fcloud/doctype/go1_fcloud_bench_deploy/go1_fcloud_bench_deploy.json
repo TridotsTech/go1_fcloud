@@ -10,7 +10,12 @@
   "created_on",
   "status",
   "apps",
-  "steps"
+  "column_break_wuxau",
+  "steps",
+  "section_break_fhptn",
+  "step_html",
+  "completed",
+  "duration"
  ],
  "fields": [
   {
@@ -40,13 +45,39 @@
   {
    "fieldname": "steps",
    "fieldtype": "JSON",
+   "hidden": 1,
    "label": "Steps"
+  },
+  {
+   "fieldname": "column_break_wuxau",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "step_html",
+   "fieldtype": "HTML",
+   "label": "Step HTML"
+  },
+  {
+   "fieldname": "section_break_fhptn",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "completed",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Completed"
+  },
+  {
+   "fieldname": "duration",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Duration"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2024-05-16 14:53:38.024492",
+ "modified": "2024-05-22 12:22:14.279383",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Bench Deploy",

@@ -240,32 +240,35 @@ class Go1FCloudSite(Document):
 			params={
 				"name":args.title
 			}
-			url="https://frappecloud.com/api/method/press.api.site.get"
-			response = self.make_request(url = url,method="POST",params=params)
+			update_doc = frappe.get_doc("Go1 FCloud Site",args.doc)
+			
+			response = self.make_request(url ="https://frappecloud.com/api/method/press.api.site.get",method="POST",params=params)
 			if("message" in response): #If Site is Active 
-				res_data[0].update({"site_status":response["message"]["status"]})
+				update_doc.status = response["message"]["status"]
 			else:#Else attaching archived with site name to get status
 				params={
 					"name":args.title+".archived"
 				}
 				url="https://frappecloud.com/api/method/press.api.site.get"
 				response = self.make_request(url = url,method="POST",params=params)
-				res_data.append({"status":response["message"]["status"]})
+				update_doc.status = response["message"]["status"]
 			if args.group:
 				bench_res = self.make_request(url = "https://frappecloud.com/api/method/press.api.bench.get",
 								  params={'name':args.group},method="POST")
 				if bench_res:
-					res_data[0].update({'bench_status':bench_res['message']['status']})
+					update_doc.bench_status = bench_res['message']['status']
 			app_response = self.make_request(url="https://frappecloud.com/api/method/press.api.site.installed_apps",
 									params=params,method="POST")
+			update_doc.custom=[]
 			for i in app_response["message"]:
-				res_data[0]["site_app"].append({"name":i["app"],"repo":i["repository"]})
+				update_doc.append('custom',{"title":i["app"],"app_name":i["repository"]})
 			if args.bench:
 				bench_app = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.apps",
 										method="POST",params={"name":args.group})
+				update_doc.installed = []
 				if bench_app:
 					for s in bench_app['message']:
-						res_data[0]["bench_app"].append({"name":s["name"]})
+						update_doc.append('installed',{"app_name":s["name"]})
 			# frappe.log_error("sitebefore bench",res_data)
 			# retrieving site jobs
 			job_params={
@@ -282,26 +285,52 @@ class Go1FCloudSite(Document):
 			}
 			job_response=self.make_request(url="https://frappecloud.com/api/method/press.api.site.jobs",params=job_params,
 										method="POST")
-			# res_data[0]['jobs'].append({})
+
 			if job_response:
+				update_doc.jobs=[]
 				for i in job_response['message']:
-					# steps = []
-					# step_param = {'job':i['name']}
-					# step_response = self.make_request(url = "https://frappecloud.com/api/method/press.api.site.job",
-					# 				   params = step_param,method="POST")
-					# # frappe.log_error(i["name"],step_response['message'])
-					# for step in step_response['message']['steps']:
-					# 	step_dict = {"Step Name":step['step_name'],"Status":step['status'],"Output":step['output']}
-					# 	steps.append(step_dict)
-					# # json_formatted_step = json.dumps(steps, indent=4)
-					# i.update({'steps':steps})
-					res_data[0]['jobs'].append(i)
-			frappe.log_error("site_jobs",job_response)
-			# frappe.log_error("site status",res_data)
-			return res_data
+					fmt_time,duration="",""
+					step = self.get_jobs(i['name'])
+					steps=step['steps']
+					if step['completion'] and step['duration']:
+						fmt_time,duration = self.get_duration(step["completion"],step['duration'])
+					update_doc.append('jobs',{
+						'title':i['job_type'],
+						'creation':i['creation'],
+						'status':i['status'],
+						'steps':json.dumps(steps,indent=4),
+						'completed':fmt_time if fmt_time else None,
+						'duration':duration if duration else None
+					})
+			update_doc.save(ignore_permissions = True)
+			# frappe.log_error("site_jobs",job_response)
+			# frappe.log_error("site status",res_data[0]['jobs'])
+			return "Completed"
 		except Exception:
 			frappe.log_error("Get Status Error",frappe.get_traceback())
 	
+	def get_duration(self,comp_str,dur_str):
+		from frappe.utils import pretty_date,format_duration
+		from datetime import datetime,timedelta
+		current_datetime = datetime.now()
+		specific_datetime = datetime.strptime(comp_str, "%Y-%m-%d %H:%M:%S.%f")
+		time_difference = current_datetime - specific_datetime
+		total_days = time_difference.days
+		if total_days>=1:
+			fmt_time = total_days
+		else:
+			fmt_time = pretty_date(specific_datetime)
+		hours , minutes , seconds = map(float,dur_str.split(':'))
+		duration_seconds = timedelta(hours=hours, minutes=minutes, seconds=seconds).total_seconds()
+		duration = format_duration(duration_seconds)
+		return fmt_time,duration
+
+	def get_jobs(self,job):
+		job_response = self.make_request(url="https://frappecloud.com/api/method/press.api.site.job",
+								   params={'job':job},method="GET")
+		return {'completion':job_response['message']['creation'],
+		  'duration':job_response['message']['duration'],
+		  'steps':job_response['message']['steps']}
 	#Returns installed app on sites
 	@frappe.whitelist()
 	def get_site_apps(self,args):
@@ -526,7 +555,13 @@ class Go1FCloudSite(Document):
 		except Exception:
 			frappe.log_error("new site optinos error",frappe.get_traceback())
 			
-
+	@frappe.whitelist()
+	def get_go1_bench(self,args):
+		try:
+			doc = frappe.get_doc("Go1 FCloud Bench",{"bench":args.doc})
+			return doc.name
+		except Exception:
+			frappe.log_error("error go1Fcloud bench",frappe.get_traceback())
 
 # @frappe.whitelist()
 def sync_site():

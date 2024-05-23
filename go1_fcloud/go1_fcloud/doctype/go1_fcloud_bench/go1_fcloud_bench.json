@@ -11,6 +11,8 @@
   "bench",
   "version",
   "region",
+  "server_id",
+  "server",
   "column_break_oqey",
   "id",
   "project",
@@ -193,6 +195,20 @@
    "fieldtype": "Link",
    "label": "Project",
    "options": "Project"
+  },
+  {
+   "fieldname": "server_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Server",
+   "read_only": 1
+  },
+  {
+   "fieldname": "server",
+   "fieldtype": "Link",
+   "label": "Server",
+   "options": "Go1 FCloud Server",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
@@ -203,7 +219,7 @@
    "link_fieldname": "bench_name"
   }
  ],
- "modified": "2024-05-16 17:27:39.257414",
+ "modified": "2024-05-23 10:50:10.421646",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Bench",
@@ -225,6 +241,11 @@
  "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": [],
+ "states": [
+  {
+   "color": "Yellow",
+   "title": "Awaiting Deploy"
+  }
+ ],
  "title_field": "bench"
 }

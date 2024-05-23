@@ -1,0 +1,124 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-05-22 14:59:39.409363",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "server_name",
+  "column_break_1ecxl",
+  "status",
+  "column_break_spfxe",
+  "server_id",
+  "section_break_armxp",
+  "region",
+  "price",
+  "server_specifications_section",
+  "vcpu",
+  "column_break_mkjs3",
+  "memory",
+  "column_break_zemhk",
+  "disk"
+ ],
+ "fields": [
+  {
+   "fieldname": "server_name",
+   "fieldtype": "Data",
+   "label": "Server Name"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Status"
+  },
+  {
+   "fieldname": "region",
+   "fieldtype": "Data",
+   "label": "Region"
+  },
+  {
+   "fieldname": "price",
+   "fieldtype": "Data",
+   "label": "Price"
+  },
+  {
+   "fieldname": "vcpu",
+   "fieldtype": "Data",
+   "label": "VCPU"
+  },
+  {
+   "fieldname": "memory",
+   "fieldtype": "Data",
+   "label": "Memory"
+  },
+  {
+   "fieldname": "disk",
+   "fieldtype": "Data",
+   "label": "Disk"
+  },
+  {
+   "fieldname": "column_break_1ecxl",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_spfxe",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_armxp",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "server_specifications_section",
+   "fieldtype": "Section Break",
+   "label": "Server Specifications"
+  },
+  {
+   "fieldname": "column_break_mkjs3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_zemhk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "server_id",
+   "fieldtype": "Data",
+   "label": "ID"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [
+  {
+   "link_doctype": "Go1 FCloud Bench",
+   "link_fieldname": "server"
+  }
+ ],
+ "modified": "2024-05-23 10:46:26.795516",
+ "modified_by": "Administrator",
+ "module": "Go1 Fcloud",
+ "name": "Go1 FCloud Server",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "server_name"
+}
