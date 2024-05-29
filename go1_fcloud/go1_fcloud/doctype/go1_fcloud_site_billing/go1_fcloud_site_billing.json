@@ -8,65 +8,66 @@
  "engine": "InnoDB",
  "field_order": [
   "site_name",
-  "creation1",
-  "plan",
-  "rate",
+  "description",
   "quantity",
-  "amount"
+  "rate",
+  "amount",
+  "period_start",
+  "period_end"
  ],
  "fields": [
   {
    "fieldname": "site_name",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Site Name"
   },
   {
-   "fieldname": "creation1",
-   "fieldtype": "Date",
-   "label": "Creation"
-  },
-  {
-   "fieldname": "plan",
-   "fieldtype": "Data",
-   "label": "Plan"
-  },
-  {
    "fieldname": "rate",
-   "fieldtype": "Data",
+   "fieldtype": "Float",
+   "in_list_view": 1,
    "label": "Rate"
   },
   {
    "fieldname": "quantity",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Quantity"
   },
   {
    "fieldname": "amount",
-   "fieldtype": "Data",
+   "fieldtype": "Float",
+   "in_list_view": 1,
    "label": "Amount"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Description"
+  },
+  {
+   "fieldname": "period_start",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Period Start"
+  },
+  {
+   "fieldname": "period_end",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Period End"
   }
  ],
  "index_web_pages_for_search": 1,
+ "istable": 1,
  "links": [],
- "modified": "2024-04-15 19:06:48.167531",
+ "modified": "2024-05-29 17:16:26.402856",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Site Billing",
  "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  }
- ],
+ "permissions": [],
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []

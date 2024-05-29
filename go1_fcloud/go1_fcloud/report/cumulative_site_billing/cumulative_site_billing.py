@@ -48,23 +48,13 @@ def get_column():
 			}]
 def get_data(filters):
 	try:
-		token,team_id = get_token()
-		headers = {"Authorization": token, "X-Press-Team": team_id}
-		total_params ={"doctype":"Invoice","fields":["name","type","invoice_pdf","payment_mode","stripe_invoice_url","name","status","due_date","total","amount_paid","amount_due",],"filters":{},"order_by":"due_date desc","start":0,"limit":20,"limit_start":0,"limit_page_length":20,"debug":0}
-		invoices_response =requests.post(url = "https://frappecloud.com/api/method/press.api.client.get_list",headers=headers,
-										params=total_params).json()
+		
+		invoices=frappe.db.get_all("Go1 FCloud Site Billing",fields=["*"])
 		data=[]
-		# frappe.log_error("inv res",invoices_response)
-		for i in invoices_response['message']:
-			params={"doctype":"Invoice","name":i['name']}
-			response = requests.post(url = "https://frappecloud.com/api/method/press.api.client.get",
-							params=params,headers=headers).json()
-			items = response['message']
-			for j in items['items']:
-				data.append({'site':j['document_name'],'description':j['description'] if "description" in j.keys() else "",
-				 'quantity':j['quantity'],'rate':j['rate'],'amount':j['amount'],
-				 'period_start':items['period_start'],'period_end':items['period_end']})
-		# frappe.log_error("invoices",data)
+		for j in invoices:
+			data.append({'site':j['site_name'],'description':j['description'] if "description" in j.keys() else "",
+				'quantity':j['quantity'],'rate':j['rate'],'amount':j['amount'],
+				'period_start':j['period_start'],'period_end':j['period_end']})
 		if filters.get("site"):
 			data = filter_data_in(data,"site",filters.get("site").lower())
 
@@ -79,12 +69,4 @@ def filter_data_in(data,field,value):
 			output.append(i)
 	return output
 
-def get_token():
-        try: 
-            user = frappe.get_doc('Go1 FCloud Configuration')
-            secret = user.get_password("api_secret")
-            secret = frappe.get_doc('Go1 FCloud Configuration').get_password('api_secret')
-            return f'token {user.api_key}:{secret}', user.x_press_team_id
-        except Exception:
-            frappe.log_error("Get Token Error",frappe.get_traceback())
 
