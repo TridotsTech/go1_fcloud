@@ -7,7 +7,7 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "site_name",
+  "site",
   "description",
   "quantity",
   "rate",
@@ -16,12 +16,6 @@
   "period_end"
  ],
  "fields": [
-  {
-   "fieldname": "site_name",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Site Name"
-  },
   {
    "fieldname": "rate",
    "fieldtype": "Float",
@@ -57,12 +51,18 @@
    "fieldtype": "Date",
    "in_list_view": 1,
    "label": "Period End"
+  },
+  {
+   "fieldname": "site",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Site Name"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2024-05-29 17:16:26.402856",
+ "modified": "2024-05-29 19:03:54.895380",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Site Billing",

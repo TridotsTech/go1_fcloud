@@ -49,12 +49,13 @@ def get_column():
 def get_data(filters):
 	try:
 		
-		invoices=frappe.db.get_all("Go1 FCloud Site Billing",fields=["*"])
-		data=[]
-		for j in invoices:
-			data.append({'site':j['site_name'],'description':j['description'] if "description" in j.keys() else "",
-				'quantity':j['quantity'],'rate':j['rate'],'amount':j['amount'],
-				'period_start':j['period_start'],'period_end':j['period_end']})
+		data=frappe.db.get_all("Go1 FCloud Site Billing",fields=["site","description","quantity","rate","amount","period_start","period_end"])
+		# frappe.log_error("update invoice",invoices)
+		# data=[]
+		# for j in invoices:
+		# 	data.append({'site':j['site_name'],'description':j['description'] if "description" in j.keys() else "",
+		# 		'quantity':j['quantity'],'rate':j['rate'],'amount':j['amount'],
+		# 		'period_start':j['period_start'],'period_end':j['period_end']})
 		if filters.get("site"):
 			data = filter_data_in(data,"site",filters.get("site").lower())
 
