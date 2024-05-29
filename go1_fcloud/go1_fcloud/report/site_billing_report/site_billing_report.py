@@ -67,12 +67,10 @@ def get_column():
     }]
 
 def get_cs_data(filters):
-    # conditions=get_conditions(filters)
+   
     token, team_id = get_token()
-        # frappe.log_error('Cred',[token,team_id])
+
     headers = {"Authorization": token, "X-Press-Team": team_id}
-    # headers = {'Authorization': 'Token 79ae58c9d806eab16761efeea01b9db2b7dd0adbf372c97dbe06a89f:e06b6f82e28a58b5eec2aee060954af73dab546fb4e3f7e196498a91',
-    #             'X-Press-Team': 'c7ca87112b'}
     message=requests.post(url="https://frappecloud.com/api/method/press.api.billing.upcoming_invoice",headers=headers).json()
     response = message["message"]
     data = response["upcoming_invoice"]

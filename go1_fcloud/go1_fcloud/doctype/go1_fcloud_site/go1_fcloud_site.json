@@ -291,7 +291,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-05-10 20:06:44.697029",
+ "modified": "2024-05-28 19:32:58.902814",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Site",
@@ -314,5 +314,5 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "title_field": "site_name"
+ "title_field": "url"
 }
