@@ -69,5 +69,3 @@ def filter_data_in(data,field,value):
 		if value in i[field].lower():
 			output.append(i)
 	return output
-
-
