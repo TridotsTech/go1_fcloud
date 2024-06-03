@@ -22,12 +22,12 @@
    "fieldname": "site_billing",
    "fieldtype": "Table",
    "label": "Site Billing",
-   "options": "Go1 FCloud Site Billing"
+   "options": "Go1 FCloud Invoice Detail"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-06-01 15:05:49.115464",
+ "modified": "2024-06-03 10:32:33.792377",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Invoice",
