@@ -9,6 +9,12 @@
  "engine": "InnoDB",
  "field_order": [
   "invoice_no",
+  "status",
+  "total",
+  "column_break_ccenc",
+  "invoice",
+  "invoice_period",
+  "section_break_ip2vw",
   "site_billing"
  ],
  "fields": [
@@ -23,11 +29,42 @@
    "fieldtype": "Table",
    "label": "Site Billing",
    "options": "Go1 FCloud Invoice Detail"
+  },
+  {
+   "fieldname": "column_break_ccenc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_ip2vw",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "total",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Total"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Status"
+  },
+  {
+   "fieldname": "invoice_period",
+   "fieldtype": "Data",
+   "label": "Invoice Period"
+  },
+  {
+   "fieldname": "invoice",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Invoice"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-06-03 10:32:33.792377",
+ "modified": "2024-06-13 19:53:54.287884",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Invoice",
@@ -49,5 +86,11 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [
+  {
+   "color": "Green",
+   "title": "Paid"
+  }
+ ],
+ "title_field": "invoice"
 }
