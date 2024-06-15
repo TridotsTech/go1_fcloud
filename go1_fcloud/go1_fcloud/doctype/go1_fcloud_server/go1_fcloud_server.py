@@ -23,16 +23,17 @@ def sync_server():
 		for i in data['message']:
 			res = search(i["title"],local_server)
 			if not res:
-				server_doc = frappe.new_doc("Go1 FCloud Server")
-				server_doc.status = i["status"]
-				server_doc.region = i["cluster"]
-				server_doc.price = i["plan"]["price_inr"]
-				server_doc.server_name = i["title"]
-				server_doc.server_id = i["name"]
-				server_doc.vcpu = i["plan"]["vcpu"]
-				server_doc.memory = i["plan"]["memory"]
-				server_doc.disk = i["plan"]["disk"]
-				server_doc.insert(ignore_permissions = True)
+				if i["plan"]:
+					server_doc = frappe.new_doc("Go1 FCloud Server")
+					server_doc.status = i["status"]
+					server_doc.region = i["cluster"]
+					server_doc.price = i["plan"]["price_inr"] if i["plan"] else ""
+					server_doc.server_name = i["title"]
+					server_doc.server_id = i["name"]
+					server_doc.vcpu = i["plan"]["vcpu"] if i["plan"] else ""
+					server_doc.memory = i["plan"]["memory"] if i["plan"] else ""
+					server_doc.disk = i["plan"]["disk"] if i["plan"] else ""
+					server_doc.insert(ignore_permissions = True)
 	except Exception:
 		frappe.log_error("Sync Server Error",frappe.get_traceback())
       

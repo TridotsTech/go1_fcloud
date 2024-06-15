@@ -107,8 +107,8 @@ class Go1FCloudBench(Document):
                 'bench':{
                     "title": args.title,
                     "version": args.version,
-                    "cluster": args.region,
-                    "server":args.server,#if payload has server id creates bench on server
+                    "cluster": args.region if not args.server else "",
+                    "server":args.server ,#if payload has server id creates bench on server
                     "saas_app":"",
                     "apps":benc_apps
                 }	
