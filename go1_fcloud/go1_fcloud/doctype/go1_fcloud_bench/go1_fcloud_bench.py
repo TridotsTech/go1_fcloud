@@ -254,18 +254,19 @@ class Go1FCloudBench(Document):
             ssh_param = {
             "key":ssh_key
             }
-            ssh_response = self.make_request(url = "https://frappecloud.com/api/method/press.api.account.add_key",params = ssh_param,
+            
+            add_key = self.make_request(url = "https://frappecloud.com/api/method/press.api.account.add_key",params = ssh_param,
                                                 method="POST")
-            # frappe.log_error("ssh add_key response",ssh_response)
-            if "exception" in ssh_response:
-                frappe.throw(ssh_response['exception'])
+            # frappe.log_error("ssh add_key response",add_key)
+            if "exception" in add_key:
+                frappe.throw(add_key['exception'])
             else:
                 params={
                     "name":args.title
                 }
                 response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.generate_certificate",params=params,
                                             method="POST")
-                # frappe.log_error("response certificate",response)
+                frappe.log_error("response certificate",response)
                 frappe.msgprint("Click Get SSH Access to get generated SSH .This certificate will be valid for 6 hours.")
         except Exception:
             frappe.log_error("generate ssh error",frappe.get_traceback())
@@ -288,10 +289,13 @@ class Go1FCloudBench(Document):
                     frappe.throw("No sites available")
                 else:
                     res = response["message"];cmd=command["message"]
+                    param={"doctype":"Site","fields":["bench"],"filters":{"group":self.id,"skip_team_filter_for_system_user":True},"order_by":"creation desc, bench desc","start":0,"limit":99999,"limit_start":0,"limit_page_length":99999,"debug":0}
+                    get_site_bench = self.make_request(url="https://frappecloud.com/api/method/press.api.client.get_list",params=param,method="POST")
+                    # frappe.log_error("site residing bench",get_site_bench['message'][0]['bench'])
                     # frappe.log_error("response ssh",response["message"])
                     # frappe.log_error("cmd",cmd[0])
                     if "ssh_certificate" in res:
-                        message=[{"certificate":res["ssh_certificate"],"command":"ssh "+cmd[0]["name"]+"@"+cmd[0]['proxy_server']+" -p 2222"}] 
+                        message=[{"certificate":res["ssh_certificate"],"command":"ssh "+get_site_bench['message'][0]['bench']+"@"+cmd[0]['proxy_server']+" -p 2222"}] 
                         return message
                     else:
                         frappe.throw("Try to generate and get access token after 15 or 30 minutes")       
@@ -447,7 +451,8 @@ class Go1FCloudBench(Document):
     def get_all_site(self,args):
         try:
             res_data=[{"jobs":[]},{"deploys":[]}]
-            response = self.make_request(url="https://frappecloud.com/api/method/press.api.site.all",method="POST")
+            site_params={"doctype":"Site","fields":["name","status","bench","host_name","plan.plan_title as plan_title","plan.price_usd as price_usd","plan.price_inr as price_inr","cluster.image as cluster_image","cluster.title as cluster_title"],"filters":{"group":self.id,"skip_team_filter_for_system_user":True},"order_by":"creation desc, bench desc","start":0,"limit":99999,"limit_start":0,"limit_page_length":99999,"debug":0}
+            response = self.make_request(url="https://frappecloud.com/api/method/press.api.client.get_list",params=site_params,method="POST")
             res_data.append(response["message"])
             params={
                     "doctype": "Agent Job",
@@ -596,7 +601,7 @@ class Go1FCloudBench(Document):
             # all_status = []
             status = self._get_status(args)
             installed_apps = self.get_installed_apps(args)
-            get_site = self.get_all_site(args) #deploys and jobs
+            get_site = self.get_all_site(args) #deploys and jobs and sites
             update_doc = frappe.get_doc("Go1 FCloud Bench",args.doc)
             json_data = json.loads(update_doc.data)
             update_doc.apps =  []
@@ -621,44 +626,46 @@ class Go1FCloudBench(Document):
                                 })
 
             #Updating Deploys in bench doc
-            for i in get_site[1]['deploys']:
-                apps=""
-                for a in i['apps']:
-                    apps+=a+","
-                apps=apps[0:len(apps)-1]
-                fmt_time,duration = "",""
-                if i['completion'] and i['duration']:
-                    fmt_time , duration = self.get_duration(i['completion'],i['duration'])
-                    
-                update_doc.append('deploy',{
-                    'title':i['name'],
-                    'created_on':i['creation'],
-                    "apps":apps,
-                    "status":i['status'],
-                    "steps":json.dumps(i["steps"],indent=4),
-                    "completed":fmt_time if fmt_time else None,
-                    "duration":duration if duration else 0
-                })
+            if get_site[1]['deploys']:
+                for i in get_site[1]['deploys']:
+                    apps=""
+                    for a in i['apps']:
+                        apps+=a+","
+                    apps=apps[0:len(apps)-1]
+                    fmt_time,duration = "",""
+                    if i['completion'] and i['duration']:
+                        fmt_time , duration = self.get_duration(i['completion'],i['duration'])
+                        
+                    update_doc.append('deploy',{
+                        'title':i['name'],
+                        'created_on':i['creation'],
+                        "apps":apps,
+                        "status":i['status'],
+                        "steps":json.dumps(i["steps"],indent=4),
+                        "completed":fmt_time if fmt_time else None,
+                        "duration":duration if duration else 0
+                    })
                 # frappe.log_error("dep name",i['name'])
             
             update_doc.status = status['message']['status'] #updating doc status
             #Updating Jobs in bench doc
-            update_doc.jobs =[]
-            for i in get_site[0]['jobs']:
-                fmt_time,duration="",""
-                if i['completion'] and i['duration']:
-                    fmt_time , duration = self.get_duration(i['completion'],i['duration'])
-                update_doc.append('jobs',{
-                    "title": i['type'],
-                    "start": i['start'],
-                    "end": i['end'],
-                    "status": i['status'],
-                    "steps":json.dumps(i['steps'],indent = 4),
-                    "completed":fmt_time if fmt_time else None,
-                    "duration":duration if duration else None
-                })
-            update_doc.linked_sites =[]
+            if get_site[0]['jobs']:
+                update_doc.jobs =[]
+                for i in get_site[0]['jobs']:
+                    fmt_time,duration="",""
+                    if i['completion'] and i['duration']:
+                        fmt_time , duration = self.get_duration(i['completion'],i['duration'])
+                    update_doc.append('jobs',{
+                        "title": i['type'],
+                        "start": i['start'],
+                        "end": i['end'],
+                        "status": i['status'],
+                        "steps":json.dumps(i['steps'],indent = 4),
+                        "completed":fmt_time if fmt_time else None,
+                        "duration":duration if duration else None
+                    })
             if get_site[2]:
+                update_doc.linked_sites =[]
                 for i in get_site[2]:
                     update_doc.append("linked_sites",{
                         "sites":i["name"]
@@ -778,7 +785,6 @@ def make_request(url, method='GET', params=None,headers=None):
     token, team_id = get_token()
     # frappe.log_error('Cred',[token,team_id])
     headers = {"Authorization": token, "X-Press-Team": team_id}
-
     if method.upper() == 'GET':
         response = requests.get(url=url, headers=headers, params=params)
         # frappe.log_error("headers",headers)
