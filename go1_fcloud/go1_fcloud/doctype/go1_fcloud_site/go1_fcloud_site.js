@@ -321,7 +321,26 @@ frappe.ui.form.on("Go1 FCloud Site", {
                                 }
                             })
                         })
-                }, __("Options"))
+                }, __("Options"),
+                frm.add_custom_button("Clear Cache",function(){
+                    frappe.confirm("bench clear-cache and bench clear-website-cache commands will be executed on your site. Are you sure you want to run these commands?",()=>{
+                        frm.call({
+                            doc:frm.doc,
+                            method : "clear_cache",
+                            args:{
+                                site_name : frm.doc.url
+                            },
+                            freeze:true,
+                            freeze_message: "Clearing Cache on site <b>" + frm.doc.url + "</b> ......",
+                            callback:function(r){
+                                if(Object.keys(r.message) == 0){
+                                    frappe.msgprint("Cache Cleared")
+                                }
+                            }
+                        })
+                    })
+                },__("Options"))
+            )
             }
         }
 

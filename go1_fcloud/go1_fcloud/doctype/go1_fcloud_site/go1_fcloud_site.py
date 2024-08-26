@@ -562,6 +562,12 @@ class Go1FCloudSite(Document):
 			return doc.name
 		except Exception:
 			frappe.log_error("error go1Fcloud bench",frappe.get_traceback())
+	
+	@frappe.whitelist()
+	def clear_cache(self,site_name):
+		cache = make_request(url = "https://frappecloud.com/api/method/press.api.site.clear_cache",
+					   params={'name':site_name},method="POST")
+		return cache
 
 # @frappe.whitelist()
 def sync_site():
@@ -688,6 +694,7 @@ def cloud_site_apps(site_url,bench_id=None):
 						  method="POST")
 	apps.append({'site_apps':site_apps['message']})
 	return apps
+
 # def get_key(file):
 # 	token, team_id = get_token()
 # 	headers = {"Authorization": token, "X-Press-Team": team_id}
