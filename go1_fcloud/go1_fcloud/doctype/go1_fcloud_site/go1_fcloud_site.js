@@ -339,7 +339,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                             }
                         })
                     })
-                },__("Options"))
+                })
             )
             }
         }
