@@ -326,7 +326,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                     frappe.confirm("bench clear-cache and bench clear-website-cache commands will be executed on your site. Are you sure you want to run these commands?",()=>{
                         frm.call({
                             doc:frm.doc,
-                            method : "clear_cache",
+                            method : "clear_site_cache",
                             args:{
                                 site_name : frm.doc.url
                             },

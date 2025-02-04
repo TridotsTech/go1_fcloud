@@ -564,7 +564,7 @@ class Go1FCloudSite(Document):
 			frappe.log_error("error go1Fcloud bench",frappe.get_traceback())
 	
 	@frappe.whitelist()
-	def clear_cache(self,site_name):
+	def clear_site_cache(self,site_name):
 		cache = make_request(url = "https://frappecloud.com/api/method/press.api.site.clear_cache",
 					   params={'name':site_name},method="POST")
 		return cache
