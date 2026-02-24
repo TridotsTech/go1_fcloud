@@ -13,7 +13,7 @@ from frappe.model.document import Document
 # 		user = frappe.db.get_value('FCloud User Configuration','3e58210b78',['api_key',"x_press_team_id"])
 # 		secret = frappe.get_doc('FCloud User Configuration','3e58210b78').get_password('api_secret')
 # 		token = f'token {user[0]}:{secret}'
-# 		url=f"https://frappecloud.com/api/method/press.api.bench.all"
+# 		url=f"https://cloud.frappe.io/api/method/press.api.bench.all"
 
 # 		r = requests.get(url = url, headers = {"Authorization":token, "X-Press-Team": user[1]})
 # 		get_data= r.json()
@@ -27,7 +27,7 @@ from frappe.model.document import Document
 # 		token = f'token {user[0]}:{secret}'
 # 		bench_param = {"name": self.id}
 		           
-# 		url=f"https://frappecloud.com/api/method/press.api.bench.dependencies"
+# 		url=f"https://cloud.frappe.io/api/method/press.api.bench.dependencies"
 
 # 		r = requests.get(url = url, headers = {"Authorization":token, "X-Press-Team": user[1]},params=bench_param)
 # 		get_dependencies= r.json()
@@ -87,7 +87,7 @@ class Go1FCloudBench(Document):
     @frappe.whitelist()
     def get_bench_options(self):
         try:
-            response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.options",method="POST")
+            response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.options",method="POST")
             # frappe.log_error("bench opt resp",response)
             return response
         except Exception:
@@ -116,10 +116,10 @@ class Go1FCloudBench(Document):
             frappe.log_error("bench params",param)
             token, team_id = self.get_token()
             headers = {"Authorization": token, "X-Press-Team": team_id}
-            response = requests.post(url="https://frappecloud.com/api/method/press.api.bench.new",json=param,headers=headers)
+            response = requests.post(url="https://cloud.frappe.io/api/method/press.api.bench.new",json=param,headers=headers)
             resp = response.json()
             bench_name = {"name":resp["message"]}
-            get_bench = requests.post(url="https://frappecloud.com/api/method/press.api.bench.get",json=bench_name,headers=headers)
+            get_bench = requests.post(url="https://cloud.frappe.io/api/method/press.api.bench.get",json=bench_name,headers=headers)
             return get_bench.json()
         except Exception:
             frappe.log_error("create Bench error",frappe.get_traceback())
@@ -129,7 +129,7 @@ class Go1FCloudBench(Document):
         params={
             "name":args.title
         }
-        release_response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.deploy_information",
+        release_response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.deploy_information",
                                         params=params,method="POST")
         token, team_id = self.get_token()
         headers = {"Authorization": token, "X-Press-Team": team_id}
@@ -165,7 +165,7 @@ class Go1FCloudBench(Document):
             #     "apps":apps
             # }
             # frappe.log_error("deploy",params)
-            # response = requests.post(url="https://frappecloud.com/api/method/press.api.bench.deploy_and_update",json = params,
+            # response = requests.post(url="https://cloud.frappe.io/api/method/press.api.bench.deploy_and_update",json = params,
             #                          headers=headers)
             # frappe.log_error("deploy_response",response.json())
             # return response.json()
@@ -201,7 +201,7 @@ class Go1FCloudBench(Document):
             }   
             # frappe.log_error("deploy",params)
             
-            response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.deploy_and_update",params = params,
+            response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.deploy_and_update",params = params,
                                     method="POST")
             # frappe.log_error("deploy_response",response)
             return response
@@ -212,14 +212,14 @@ class Go1FCloudBench(Document):
     def bench_build(self,args):
         try:
             bench_param={"name":args.title}
-            bench_version=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.versions",
+            bench_version=self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.versions",
                                             params=bench_param,method="POST")
             bench = bench_version["message"]
             param={
                 "name":bench[0]["name"]
             }
             # frappe.log_error("bench build param",param)
-            response=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.rebuild",
+            response=self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.rebuild",
                                     params=param,method="POST")
             return response
         except Exception:
@@ -234,14 +234,14 @@ class Go1FCloudBench(Document):
             params = {
                     "name":args.title
             }
-            response = self.make_request(url = "https://frappecloud.com/api/method/press.api.bench.get",params=params,method="POST")
+            response = self.make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.get",params=params,method="POST")
             return response
         except Exception:
             frappe.log_error("get status",frappe.get_traceback())
     
     @frappe.whitelist()
     def get_bench_list(self):
-        url = "https://frappecloud.com/api/method/press.api.bench.all"
+        url = "https://cloud.frappe.io/api/method/press.api.bench.all"
         return self.make_request(url)
     
     @frappe.whitelist()
@@ -255,7 +255,7 @@ class Go1FCloudBench(Document):
             "key":ssh_key
             }
             
-            add_key = self.make_request(url = "https://frappecloud.com/api/method/press.api.account.add_key",params = ssh_param,
+            add_key = self.make_request(url = "https://cloud.frappe.io/api/method/press.api.account.add_key",params = ssh_param,
                                                 method="POST")
             # frappe.log_error("ssh add_key response",add_key)
             if "exception" in add_key:
@@ -264,7 +264,7 @@ class Go1FCloudBench(Document):
                 params={
                     "name":args.title
                 }
-                response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.generate_certificate",params=params,
+                response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.generate_certificate",params=params,
                                             method="POST")
                 frappe.log_error("response certificate",response)
                 frappe.msgprint("Click Get SSH Access to get generated SSH .This certificate will be valid for 6 hours.")
@@ -277,9 +277,9 @@ class Go1FCloudBench(Document):
             params={
                 "name":args.title
             }
-            response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.certificate",params=params,
+            response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.certificate",params=params,
                                             method="POST")
-            command = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.versions",params=params,method="POST")
+            command = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.versions",params=params,method="POST")
             # frappe.log_error("cert resp",response)
             # frappe.log_error("cmd resp",command)
             if response["message"] == False:
@@ -290,7 +290,7 @@ class Go1FCloudBench(Document):
                 else:
                     res = response["message"];cmd=command["message"]
                     param={"doctype":"Site","fields":["bench"],"filters":{"group":self.id,"skip_team_filter_for_system_user":True},"order_by":"creation desc, bench desc","start":0,"limit":99999,"limit_start":0,"limit_page_length":99999,"debug":0}
-                    get_site_bench = self.make_request(url="https://frappecloud.com/api/method/press.api.client.get_list",params=param,method="POST")
+                    get_site_bench = self.make_request(url="https://cloud.frappe.io/api/method/press.api.client.get_list",params=param,method="POST")
                     # frappe.log_error("site residing bench",get_site_bench['message'][0]['bench'])
                     # frappe.log_error("response ssh",response["message"])
                     # frappe.log_error("cmd",cmd[0])
@@ -308,7 +308,7 @@ class Go1FCloudBench(Document):
             params={
                 "name":args.title
             }
-            response=self.make_request(url = "https://frappecloud.com/api/method/press.api.bench.apps",params=params,method="POST")
+            response=self.make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.apps",params=params,method="POST")
             return response["message"]
         except Exception:
             frappe.log_error("get_installed_apps",frappe.get_traceback())
@@ -323,7 +323,7 @@ class Go1FCloudBench(Document):
             else:
                 params={"name":args.title}
             
-            version_response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.versions",params=params,method="POST")
+            version_response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.versions",params=params,method="POST")
             # frappe.log_error("version response",version_response)
             return version_response
         except Exception:
@@ -334,7 +334,7 @@ class Go1FCloudBench(Document):
         try:
             params={"name":args.id}
 
-            response=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.update_all_sites",
+            response=self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.update_all_sites",
                                     params=params,method="POST")
             # frappe.log_error("update site response",response)
             return response
@@ -344,7 +344,7 @@ class Go1FCloudBench(Document):
     @frappe.whitelist()
     def get_git_repo(self):
         try:
-            response = self.make_request(url = "https://frappecloud.com/api/method/press.api.github.options",method="POST")
+            response = self.make_request(url = "https://cloud.frappe.io/api/method/press.api.github.options",method="POST")
             return response
         except Exception:
             frappe.log_error("Error Validating App",frappe.get_traceback())
@@ -359,7 +359,7 @@ class Go1FCloudBench(Document):
                 "name":args.name,
                 "owner":args.owner
             }
-            response = self.make_request(url="https://frappecloud.com/api/method/press.api.github.repository",
+            response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.github.repository",
                                 params=params,method="POST")
             # frappe.log_error("validate response",response)
             return response
@@ -375,7 +375,7 @@ class Go1FCloudBench(Document):
                 "owner":args.owner,
                 "repository":args.repo
             }
-            response = self.make_request(url="https://frappecloud.com/api/method/press.api.github.app",
+            response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.github.app",
                                 params=params,method="POST")
             # frappe.log_error("validate app response",response)
             return response
@@ -398,9 +398,9 @@ class Go1FCloudBench(Document):
                     "title":args.title
                 }
             }
-            # response = requests.post(url="https://frappecloud.com/api/method/press.api.app.new",
+            # response = requests.post(url="https://cloud.frappe.io/api/method/press.api.app.new",
             #                     json=params,headers=headers)
-            response=self.make_request(url="https://frappecloud.com/api/method/press.api.app.new",params=params,method="POST")
+            response=self.make_request(url="https://cloud.frappe.io/api/method/press.api.app.new",params=params,method="POST")
             # frappe.log_error("validate app response",response)
             # frappe.log_error("status code",response)
             return response
@@ -410,18 +410,18 @@ class Go1FCloudBench(Document):
     @frappe.whitelist()
     def bench_restart(self,args):
             try:
-        # bench_id=self.make_request(url="https://frappecloud.com/api/method/press.api.site.get",params={"name":args.title},
+        # bench_id=self.make_request(url="https://cloud.frappe.io/api/method/press.api.site.get",params={"name":args.title},
         #                         method="POST")
         # frappe.log_error("id",bench_id["message"]["group"])
         # name = bench_id["message"]["group"]
-        # bench_params={"name":args.title};url="https://frappecloud.com/api/method/press.api.bench.restart"
+        # bench_params={"name":args.title};url="https://cloud.frappe.io/api/method/press.api.bench.restart"
         
-                bench = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.versions",params={"name":args.title},
+                bench = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.versions",params={"name":args.title},
                                             method="POST")
                 # frappe.log_error("bench",bench)
                 bench_server_id=bench["message"][0].get("name")
                 # frappe.log_error("bench id",bench_server_id)
-                response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.restart",params={"name":bench_server_id},
+                response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.restart",params={"name":bench_server_id},
                                         method="POST")
                 return response
             except Exception:
@@ -431,7 +431,7 @@ class Go1FCloudBench(Document):
     @frappe.whitelist()
     def get_permission(self):
         try:
-            url ="https://frappecloud.com/api/method/press.api.account.get"
+            url ="https://cloud.frappe.io/api/method/press.api.account.get"
             response=self.make_request(url=url,method="POST")
             return response
         except Exception:
@@ -441,7 +441,7 @@ class Go1FCloudBench(Document):
     def drop_bench(self,args):
         try:
             params={"name":args.title}
-            url="https://frappecloud.com/api/method/press.api.bench.archive"
+            url="https://cloud.frappe.io/api/method/press.api.bench.archive"
             response=self.make_request(url=url,params=params,method="POST")
             return response
         except Exception:
@@ -452,7 +452,7 @@ class Go1FCloudBench(Document):
         try:
             res_data=[{"jobs":[]},{"deploys":[]}]
             site_params={"doctype":"Site","fields":["name","status","bench","host_name","plan.plan_title as plan_title","plan.price_usd as price_usd","plan.price_inr as price_inr","cluster.image as cluster_image","cluster.title as cluster_title"],"filters":{"group":self.id,"skip_team_filter_for_system_user":True},"order_by":"creation desc, bench desc","start":0,"limit":99999,"limit_start":0,"limit_page_length":99999,"debug":0}
-            response = self.make_request(url="https://frappecloud.com/api/method/press.api.client.get_list",params=site_params,method="POST")
+            response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.client.get_list",params=site_params,method="POST")
             res_data.append(response["message"])
             params={
                     "doctype": "Agent Job",
@@ -478,7 +478,7 @@ class Go1FCloudBench(Document):
                 "debug": 0
             }
             #Bench Jobs
-            job_response=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.jobs",params=params,method="POST")
+            job_response=self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.jobs",params=params,method="POST")
             for i in job_response["message"]:
                 job_steps = self.get_job(i['name'])
                 jobs=[]
@@ -488,7 +488,7 @@ class Go1FCloudBench(Document):
                                             "status":i["status"],"steps":jobs,'duration':job_steps['duration'],
                                             'completion':job_steps['completion']})
             #Deploy Candidate
-            dep_response=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.candidates",params=dep_params,method="POST")
+            dep_response=self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.candidates",params=dep_params,method="POST")
             for i in dep_response["message"]:
                 steps=[]
                 dep_steps = self.get_candidate(i['name'])
@@ -506,14 +506,14 @@ class Go1FCloudBench(Document):
 
     def get_candidate(self,candidate):
         dep_param={"name":candidate}
-        resp = self.make_request(url = "https://frappecloud.com/api/method/press.api.bench.candidate",method="POST",
+        resp = self.make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.candidate",method="POST",
                                  params=dep_param)
         return {"completion":resp['message']['build_end'] if "build_end" in resp['message'].keys() else None,
                 'duration':resp['message']['build_duration'] if 'build_duration' in resp['message'].keys() else None,'steps':resp["message"]['build_steps']}
     
     def get_job(self,job):
         job_param = {"job":job}
-        resp = self.make_request(url = "https://frappecloud.com/api/method/press.api.site.job",method = "POST",
+        resp = self.make_request(url = "https://cloud.frappe.io/api/method/press.api.site.job",method = "POST",
                                  params = job_param)
         return {'duration':resp['message']['duration'],'completion':resp['message']['creation'],'steps':resp['message']['steps']}
     
@@ -528,7 +528,7 @@ class Go1FCloudBench(Document):
                 apps.append({"app":i["app"],"source":i["source"]})
             params={"name":args.name,"apps":apps}
             # frappe.log_error("apps",params)
-            response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.add_apps",params=params,
+            response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.add_apps",params=params,
                                     method="POST")
             return response
         except Exception:
@@ -538,7 +538,7 @@ class Go1FCloudBench(Document):
     def show_installed_apps(self,args):
         try:
             params={"name":args.name}
-            response=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.apps",params=params,
+            response=self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.apps",params=params,
                                        method="POST")
             return response
         except Exception:
@@ -548,7 +548,7 @@ class Go1FCloudBench(Document):
     def remove_app(self,args):
         try:
             params={"name":args.id,"app":args.name}
-            response = self.make_request(url="https://frappecloud.com/api/method/press.api.bench.remove_app",
+            response = self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.remove_app",
                                         params=params,method="POST")
             # frappe.log_error("remove app response",response)
             return response
@@ -559,7 +559,7 @@ class Go1FCloudBench(Document):
     def get_deploy_site(self,args):
         try:
             params={"name":args.id}
-            response=self.make_request(url="https://frappecloud.com/api/method/press.api.site.get",params=params,
+            response=self.make_request(url="https://cloud.frappe.io/api/method/press.api.site.get",params=params,
                                        method="POST")
             # frappe.log_error("get_site",response)
             return response
@@ -581,7 +581,7 @@ class Go1FCloudBench(Document):
                 "limit_page_length": 5,
                 "debug": 0
             }
-            response=self.make_request(url="https://frappecloud.com/api/method/press.api.bench.jobs",params=params,method="POST")
+            response=self.make_request(url="https://cloud.frappe.io/api/method/press.api.bench.jobs",params=params,method="POST")
             # frappe.log_error("jobs response",response)
             return response
         except Exception:
@@ -703,7 +703,7 @@ class Go1FCloudBench(Document):
             "name":args.name,
             "title":args.title
         }
-        url = "https://frappecloud.com/api/method/press.api.bench.rename"
+        url = "https://cloud.frappe.io/api/method/press.api.bench.rename"
         response = self.make_request(url=url,params=params,method="POST")
         return response
     
@@ -723,11 +723,11 @@ class Go1FCloudBench(Document):
 def sync_bench():
     try:
         import json
-        data = make_request(url="https://frappecloud.com/api/method/press.api.bench.all",
+        data = make_request(url="https://cloud.frappe.io/api/method/press.api.bench.all",
                                         params={"bench_filter":{"status":"All","tag":""}},method="POST")
         cloud_bench = data["message"]
         frappe.log_error("all bench",cloud_bench)
-        bench_data= make_request(url = "https://frappecloud.com/api/method/press.api.bench.options",
+        bench_data= make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.options",
                                      method="POST")
         local_bench = frappe.get_all("Go1 FCloud Bench",filters={"is_dropped":0},fields=["*"])
         def search(name,local_list):
@@ -811,9 +811,9 @@ def get_token():
 
 def get_cloud_bench_details(bench):
     cloud_bench_details = {}
-    get_region = make_request(url="https://frappecloud.com/api/method/press.api.bench.regions",
+    get_region = make_request(url="https://cloud.frappe.io/api/method/press.api.bench.regions",
                               params={"name":bench},method="POST")
-    get_installed_apps = make_request(url = "https://frappecloud.com/api/method/press.api.bench.apps",
+    get_installed_apps = make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.apps",
                                       params={"name":bench},method="POST")
     cloud_bench_details["region"]=get_region["message"][0].get("name")
     cloud_bench_details["installed_apps"]=get_installed_apps["message"]
