@@ -756,7 +756,7 @@ def sync_bench():
                         "title":i["name"],
                         "app_name":i["name"]
                     })
-                frappe.log_error("bench items",i["title"]+":"+i["version"]+str(bench_data["message"]))
+                #frappe.log_error("bench items",i["title"]+":"+i["version"]+str(bench_data["message"]))
                 cloud_doc.insert(ignore_permissions = True)   
             # else:
             #     frappe.log_error("working else sync",i['title'])
