@@ -577,16 +577,16 @@ def sync_site():
 		cloud_site = data['message']
 		local_site = frappe.get_all('Go1 FCloud Site',filters={'is_dropped':0},fields=["*"])
 		site_options = cloud_site_options()
-		# frappe.log_error("cloud site",data)
-		# frappe.log_error("cloud site options",site_options)
+		frappe.log_error("cloud site",data)
+		frappe.log_error("cloud site options",site_options)
 		def search(name,local_list):
 			return ["found" for site in local_list if site["url"] == name]
 		for i in cloud_site:
-			# frappe.log_error("c site",i)
-			# frappe.log_error("site _name",local_site)
-			# frappe.log_error('plan',i['plan']['name']+" - INR "+str(int(i['plan']['price_inr'])))
+			frappe.log_error("c site",i)
+			frappe.log_error("site _name",local_site)
+			frappe.log_error('plan',i['plan']['name']+" - INR "+str(int(i['plan']['price_inr'])))
 			res = search(i['name'],local_site)
-			# frappe.log_error("result",res)
+			frappe.log_error("result",res)
 			if not res:
 				# frappe.log_error("creating site doc",i)
 				cloud_doc = frappe.new_doc("Go1 FCloud Site")
