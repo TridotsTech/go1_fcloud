@@ -729,7 +729,9 @@ def sync_bench():
         frappe.log_error("all bench",cloud_bench)
         bench_data= make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.options",
                                      method="POST")
+		frappe.log_error("bench_data",bench_data)
         local_bench = frappe.get_all("Go1 FCloud Bench",filters={"is_dropped":0},fields=["*"])
+		frappe.log_error("local_bench",local_bench)
         def search(name,local_list):
                 return ["found" for bench in local_list if bench["bench"] == name]
         for i in cloud_bench:
@@ -754,7 +756,7 @@ def sync_bench():
                         "title":i["name"],
                         "app_name":i["name"]
                     })
-                # frappe.log_error("bench items",i["title"]+":"+i["version"]+str(bench_data["message"]))
+                frappe.log_error("bench items",i["title"]+":"+i["version"]+str(bench_data["message"]))
                 cloud_doc.insert(ignore_permissions = True)   
             # else:
             #     frappe.log_error("working else sync",i['title'])
@@ -813,8 +815,10 @@ def get_cloud_bench_details(bench):
     cloud_bench_details = {}
     get_region = make_request(url="https://cloud.frappe.io/api/method/press.api.bench.regions",
                               params={"name":bench},method="POST")
+	frappe.log_error("get_region",get_region)
     get_installed_apps = make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.apps",
                                       params={"name":bench},method="POST")
+	frappe.log_error("get_installed_apps",get_installed_apps)
     cloud_bench_details["region"]=get_region["message"][0].get("name")
     cloud_bench_details["installed_apps"]=get_installed_apps["message"]
     return cloud_bench_details
