@@ -574,6 +574,7 @@ def sync_site():
 	try:
 		import json
 		data = make_request(url='https://frappecloud.com/api/method/press.api.site.all',method='POST')
+		frappe.log_error("cloud site",data)
 		cloud_site = data['message']
 		local_site = frappe.get_all('Go1 FCloud Site',filters={'is_dropped':0},fields=["*"])
 		site_options = cloud_site_options()
