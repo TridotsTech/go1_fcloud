@@ -757,6 +757,7 @@ def sync_bench():
                         "app_name":i["name"]
                     })
                 #frappe.log_error("bench items",i["title"]+":"+i["version"]+str(bench_data["message"]))
+                frappe.log_error("insert",cloud_doc.insert(ignore_permissions = True))
                 cloud_doc.insert(ignore_permissions = True)   
             # else:
             #     frappe.log_error("working else sync",i['title'])
@@ -815,10 +816,8 @@ def get_cloud_bench_details(bench):
     cloud_bench_details = {}
     get_region = make_request(url="https://cloud.frappe.io/api/method/press.api.bench.regions",
                               params={"name":bench},method="POST")
-    frappe.log_error("get_region",get_region)
     get_installed_apps = make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.apps",
                                       params={"name":bench},method="POST")
-    frappe.log_error("get_installed_apps",get_installed_apps)
     cloud_bench_details["region"]=get_region["message"][0].get("name")
     cloud_bench_details["installed_apps"]=get_installed_apps["message"]
     return cloud_bench_details
