@@ -577,7 +577,7 @@ def sync_site():
         data = make_request(
             url='https://frappecloud.com/api/method/frappe.client.get_list',
             method='POST',
-            data={
+            params={
                 "doctype": "Site",
                 "fields": '["name", "status", "plan", "team"]',
                 "limit_page_length": 100
