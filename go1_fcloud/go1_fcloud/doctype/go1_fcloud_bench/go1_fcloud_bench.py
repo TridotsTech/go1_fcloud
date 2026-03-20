@@ -744,7 +744,7 @@ def sync_bench():
                 json_mylist = json.dumps(bench_data["message"], separators=(',', ':'))
                 cloud_doc.data = json_mylist
                 cloud_doc.bench = i["title"]
-                cloud_doc.name = i["name"]
+                #cloud_doc.name = i["name"]
                 cloud_doc.status = i["status"]
                 cloud_doc.version = i["version"]
                 cloud_doc.region = cloud_details["region"]
