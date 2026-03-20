@@ -8,30 +8,30 @@ from frappe.model.document import Document
 
 
 # class Go1FCloudBench(Document):
-# 	@frappe.whitelist()
-# 	def get_bench_list(self):
-# 		user = frappe.db.get_value('FCloud User Configuration','3e58210b78',['api_key',"x_press_team_id"])
-# 		secret = frappe.get_doc('FCloud User Configuration','3e58210b78').get_password('api_secret')
-# 		token = f'token {user[0]}:{secret}'
-# 		url=f"https://cloud.frappe.io/api/method/press.api.bench.all"
+#   @frappe.whitelist()
+#   def get_bench_list(self):
+#       user = frappe.db.get_value('FCloud User Configuration','3e58210b78',['api_key',"x_press_team_id"])
+#       secret = frappe.get_doc('FCloud User Configuration','3e58210b78').get_password('api_secret')
+#       token = f'token {user[0]}:{secret}'
+#       url=f"https://cloud.frappe.io/api/method/press.api.bench.all"
 
-# 		r = requests.get(url = url, headers = {"Authorization":token, "X-Press-Team": user[1]})
-# 		get_data= r.json()
-# 		# resData = json.dumps(get_data)
-# 		return get_data
-	
-# 	@frappe.whitelist()
-# 	def get_dependencies(self):
-# 		user = frappe.db.get_value('FCloud User Configuration','3e58210b78',['api_key',"x_press_team_id"])
-# 		secret = frappe.get_doc('FCloud User Configuration','3e58210b78').get_password('api_secret')
-# 		token = f'token {user[0]}:{secret}'
-# 		bench_param = {"name": self.id}
-		           
-# 		url=f"https://cloud.frappe.io/api/method/press.api.bench.dependencies"
+#       r = requests.get(url = url, headers = {"Authorization":token, "X-Press-Team": user[1]})
+#       get_data= r.json()
+#       # resData = json.dumps(get_data)
+#       return get_data
+    
+#   @frappe.whitelist()
+#   def get_dependencies(self):
+#       user = frappe.db.get_value('FCloud User Configuration','3e58210b78',['api_key',"x_press_team_id"])
+#       secret = frappe.get_doc('FCloud User Configuration','3e58210b78').get_password('api_secret')
+#       token = f'token {user[0]}:{secret}'
+#       bench_param = {"name": self.id}
+                   
+#       url=f"https://cloud.frappe.io/api/method/press.api.bench.dependencies"
 
-# 		r = requests.get(url = url, headers = {"Authorization":token, "X-Press-Team": user[1]},params=bench_param)
-# 		get_dependencies= r.json()
-# 		return get_dependencies
+#       r = requests.get(url = url, headers = {"Authorization":token, "X-Press-Team": user[1]},params=bench_param)
+#       get_dependencies= r.json()
+#       return get_dependencies
 
 
 class Go1FCloudBench(Document):
@@ -111,7 +111,7 @@ class Go1FCloudBench(Document):
                     "server":args.server ,#if payload has server id creates bench on server
                     "saas_app":"",
                     "apps":benc_apps
-                }	
+                }   
             }
             frappe.log_error("bench params",param)
             token, team_id = self.get_token()
@@ -729,9 +729,9 @@ def sync_bench():
         frappe.log_error("all bench",cloud_bench)
         bench_data= make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.options",
                                      method="POST")
-		frappe.log_error("bench_data",bench_data)
+        frappe.log_error("bench_data",bench_data)
         local_bench = frappe.get_all("Go1 FCloud Bench",filters={"is_dropped":0},fields=["*"])
-		frappe.log_error("local_bench",local_bench)
+        frappe.log_error("local_bench",local_bench)
         def search(name,local_list):
                 return ["found" for bench in local_list if bench["bench"] == name]
         for i in cloud_bench:
@@ -815,10 +815,10 @@ def get_cloud_bench_details(bench):
     cloud_bench_details = {}
     get_region = make_request(url="https://cloud.frappe.io/api/method/press.api.bench.regions",
                               params={"name":bench},method="POST")
-	frappe.log_error("get_region",get_region)
+    frappe.log_error("get_region",get_region)
     get_installed_apps = make_request(url = "https://cloud.frappe.io/api/method/press.api.bench.apps",
                                       params={"name":bench},method="POST")
-	frappe.log_error("get_installed_apps",get_installed_apps)
+    frappe.log_error("get_installed_apps",get_installed_apps)
     cloud_bench_details["region"]=get_region["message"][0].get("name")
     cloud_bench_details["installed_apps"]=get_installed_apps["message"]
     return cloud_bench_details
