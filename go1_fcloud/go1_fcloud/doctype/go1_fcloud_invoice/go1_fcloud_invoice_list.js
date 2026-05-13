@@ -5,7 +5,9 @@ frappe.listview_settings['Go1 FCloud Invoice'] = {
         listview.page.add_inner_button('Sync Invoice', function (frm) {
             frappe.call({
                 method: "go1_fcloud.go1_fcloud.doctype.go1_fcloud_invoice.go1_fcloud_invoice.sync_invoices_queue",
-                async: false,
+                async: true,
+                freeze: true,
+                freeze_message: "Syncing Invoices From Frappe Cloud",
                 callback: function (r) {
                     frappe.msgprint("FCloud Invoice Synced Scheduled Successfully")
                     setTimeout(function () {

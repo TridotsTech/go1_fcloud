@@ -186,12 +186,12 @@ frappe.ui.form.on("Go1 FCloud Bench", {
                         freeze:true,
                         freeze_message:"Creating Bench...",
                         callback: function (r) {
-                            var bench = r.message.message
+                            let bench = r.message.message
                             frm.set_value("id", bench.name)
                             frm.set_value("status", bench.status)
                             frm.save()
                         }
-                    })
+                    });    
                 }, __("Create"))
             }
         }
@@ -309,25 +309,51 @@ frappe.ui.form.on("Go1 FCloud Bench", {
                                                 }
                                             }
                                         }
+                                        // console.log(argument)
+                                        if (argument[0].site.length == 0) {
+                                            let deploy = JSON.stringify(argument[0].app)
+                                            // console.log(deploy)
+                                            frappe.call({
+                                                
+                                                method: "go1_fcloud.go1_fcloud.doctype.go1_fcloud_bench.go1_fcloud_bench.deploy",
+                                                args: {
+                                                    "message": deploy,
+                                                    "title": frm.doc.id
+                                                },
+                                                async: true,
+                                                freeze: true,
+                                                freeze_message: "Deploying...",
+                                                callback: function (r) {
+                                                    if (r.message) {
+                                                        // console.log(r.message)
+                                                        frappe.msgprint(r.message)
+                                                    }
+                                                },
+                                            })
+                                            d.hide();
+                                        }
 
-                                        frappe.call({
-                                            doc: frm.doc,
-                                            method: "deploy_and_update",
-                                            args: {
-                                                "message": argument,
-                                                "title": frm.doc.id
-                                            },
-                                            async: true,
-                                            freeze: true,
-                                            freeze_message: "Deploying...",
-                                            callback: function (r) {
-                                                if (r.message) {
-                                                    // console.log(r.message.message)
-                                                    frappe.msgprint("Bench Deployed Succesfully , Click <b>Get Status</b> to know the status of deploy")
+                                        
+                                        else {
+                                            frappe.call({
+                                                doc: frm.doc,
+                                                method: "deploy_and_update",
+                                                args: {
+                                                    "message": argument,
+                                                    "title": frm.doc.id
+                                                },
+                                                async: true,
+                                                freeze: true,
+                                                freeze_message: "Deploying...",
+                                                callback: function (r) {
+                                                    if (r.message) {
+                                                        // console.log(r.message.message)
+                                                        frappe.msgprint("Bench Deployed Succesfully , Click <b>Get Status</b> to know the status of deploy")
+                                                    }
                                                 }
-                                            }
-                                        })
-                                        d.hide();
+                                            })
+                                            d.hide();
+                                        }    
                                     }
                                 })
                                 d.show()
@@ -424,18 +450,36 @@ frappe.ui.form.on("Go1 FCloud Bench", {
 
         if (!frm.doc.__islocal && frm.doc.id && !frm.doc.is_dropped) {
             frm.add_custom_button("Add App", function () {
-                frm.set_df_property("apps", "read_only", 0)
-                frm.set_df_property("apps", "hidden", 0)
-                frm.set_df_property("custom", "hidden", 1)
-                // frm.set_df_property("update_app", "hidden", 0)
-                // frm.add_custom_button("Update Later", function () {
-                //     frm.set_df_property("apps", "read_only", 1)
-                //     frm.set_df_property("apps", "hidden", 1)
-                //     frm.set_df_property("custom", "hidden", 0)
-                //     // frm.set_df_property("update_app", "hidden", 1)
-                //     frm.remove_custom_button("Update Later")
-                // })
-                frappe.msgprint("Apps table enabled to add apps")
+                 frappe.call({
+                        method: "go1_fcloud.go1_fcloud.doctype.go1_fcloud_bench.go1_fcloud_bench.get_apps",
+                        args: {
+                            "title": frm.doc.id
+                        },
+                        async: true,
+                        freeze:true,
+                        freeze_message:" getting apps...",
+                        callback: function (r) {
+                            let data = JSON.stringify(r.message);
+                            frm.set_value("app_data", data)
+                            frm.save()
+                        }
+                }).then(() => {
+                    frm.set_df_property("apps", "read_only", 0)
+                    frm.set_df_property("apps", "hidden", 0)
+                    frm.set_df_property("custom", "hidden", 0)
+                    // frm.set_df_property("update_app", "hidden", 0)
+                    // frm.add_custom_button("Update Later", function () {
+                    //     frm.set_df_property("apps", "read_only", 1)
+                    //     frm.set_df_property("apps", "hidden", 1)
+                    //     frm.set_df_property("custom", "hidden", 0)
+                    //     // frm.set_df_property("update_app", "hidden", 1)
+                    //     frm.remove_custom_button("Update Later")
+                    // })
+                    frappe.msgprint("Apps table enabled to add apps")
+                    }
+
+                )
+                
             }, __("Menu"))
 
             frm.add_custom_button("Update Apps", function () {
@@ -1442,6 +1486,7 @@ frappe.ui.form.on("Go1 FCloud Bench Job",{
 
 frappe.ui.form.on('Apps', {
     apps_add(frm, cdt, cdn) {
+        var d = locals[cdt][cdn]
         // var install = frm.doc.apps
         // let apps = []
         // for (let i of install) {
@@ -1449,30 +1494,40 @@ frappe.ui.form.on('Apps', {
         // }
         // const uniqueSet = new Set(apps);
         // console.log(uniqueSet)
-        var d = locals[cdt][cdn]
-        var json = JSON.parse(frm.doc.data)
-        let appsOptions = ""
-        for (var data of json.versions) {
-            if (frm.doc.version == data.name) {
-                // console.log(data.apps)
-                for (var app of data.apps) {
-                    if (frm.doc.version == "Version 15") {
-                        var version = "version-15"
-                    }
-                    // console.log(app.name)
-                    for (var src of app.sources) {
-                        if (src.branch != "develop" && src.branch != "Develop" && src.branch != (version + "-beta")) {
-                            var split = (src.name).split("-")
-                            appsOptions += '\n' + `${split[1]}`
+        if (frm.is_new()) {
+            var json = JSON.parse(frm.doc.data)
+            let appsOptions = ""
+            for (var data of json.versions) {
+                if (frm.doc.version == data.name) {
+                    // console.log(data.apps)
+                    for (var app of data.apps) {
+                        if (frm.doc.version == "Version 15") {
+                            var version = "version-15"
+                        }
+                        // console.log(app.name)
+                        for (var src of app.sources) {
+                            if (src.branch != "develop" && src.branch != "Develop" && src.branch != (version + "-beta")) {
+                                var split = (src.name).split("-")
+                                appsOptions += '\n' + `${split[1]}`
+                            }
                         }
                     }
+
+                    cur_frm.grids[0].grid.grid_rows[d.idx - 1].columns.title.df.options = appsOptions
+                    frm.refresh_field('apps')
+
                 }
 
-                cur_frm.grids[0].grid.grid_rows[d.idx - 1].columns.title.df.options = appsOptions
-                frm.refresh_field('apps')
-
+            }   
+        }
+        else{
+            var json = JSON.parse(frm.doc.app_data)
+            let appsOptions = ""
+            for (var data of json.message){     
+                appsOptions += '\n' + `${data.name}`              
             }
-
+            cur_frm.grids[0].grid.grid_rows[d.idx - 1].columns.title.df.options = appsOptions
+            frm.refresh_field('apps')
         }
     },
     title: function (frm, cdt, cdn) {
@@ -1483,25 +1538,48 @@ frappe.ui.form.on('Apps', {
         // console.log(split[1])
         // d.name1 = split[1]
         // frm.refresh_field('apps')
-        var json = JSON.parse(frm.doc.data)
-        for (var data of json.versions) {
-            if (frm.doc.version == data.name) {
-                for (var app of data.apps) {
-                    if (frm.doc.version == "Version 15") {
-                        var version = "version-15"
+        if (frm.is_new()) {
+            var json = JSON.parse(frm.doc.data)
+            for (var data of json.versions) {
+                if (frm.doc.version == data.name) {
+                    for (var app of data.apps) {
+                        if (frm.doc.version == "Version 15") {
+                            var version = "version-15"
+                        }
+                        for (var src of app.sources) {
+                            if (src.branch != "develop" && src.branch != "Develop" && src.branch != (version + "-beta")) {
+                                var split = (src.name).split("-")
+                                if (split.includes(d.title)) {
+                                    d.name1 = src.name
+                                }
+                            }
+                        }    
                     }
-                    for (var src of app.sources) {
-                        if (src.branch != "develop" && src.branch != "Develop" && src.branch != (version + "-beta")) {
-                            var split = (src.name).split("-")
-                            if (split.includes(d.title)) {
-                                d.name1 = src.name
+                    frm.refresh_field('apps')
+
+                }
+
+            }   
+        }
+        else{
+            var json = JSON.parse(frm.doc.app_data)
+            for (var data of json.message) {
+                        for (var src of data.sources) {
+                            if (src.version == "Version 15") {
+                                var version = "version-15"
+                            }
+                            if (src.branch != "develop" && src.branch != "Develop" && src.branch != (version + "-beta")) {
+                                var split = (src.name).split("-")
+                                if (split.includes(d.title)) {
+                                    d.name1 = src.name
+                                }
                             }
                         }
-                    }
+                    
+                
                 }
+                frm.refresh_field('apps')
             }
         }
-        frm.refresh_field('apps')
-    }
-})
+    })
 

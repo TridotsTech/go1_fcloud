@@ -23,7 +23,7 @@
   "apps",
   "custom",
   "data",
-  "app_json",
+  "app_data",
   "ssh_certificate",
   "command",
   "repository_data",
@@ -93,12 +93,6 @@
    "hidden": 1,
    "label": "Installed Apps",
    "read_only": 1
-  },
-  {
-   "fieldname": "app_json",
-   "fieldtype": "Small Text",
-   "hidden": 1,
-   "label": "App Json"
   },
   {
    "fieldname": "section_break_ycsk",
@@ -209,6 +203,12 @@
    "label": "Server",
    "options": "Go1 FCloud Server",
    "read_only": 1
+  },
+  {
+   "fieldname": "app_data",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "App Data"
   }
  ],
  "index_web_pages_for_search": 1,
@@ -219,8 +219,8 @@
    "link_fieldname": "bench_name"
   }
  ],
- "modified": "2024-05-23 10:50:10.421646",
- "modified_by": "Administrator",
+ "modified": "2026-05-11 15:05:22.071454",
+ "modified_by": "sarathigreen4@gmail.com",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Bench",
  "owner": "Administrator",
@@ -238,6 +238,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",

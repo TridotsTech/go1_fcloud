@@ -4,7 +4,7 @@ frappe.listview_settings['Go1 FCloud Site'] = {
     // triggers once before the list is loaded
     listview.page.add_inner_button('Sync Site', function (frm) {
       frappe.call({
-        method: "go1_fcloud.go1_fcloud.doctype.go1_fcloud_site.go1_fcloud_site.sync_site_enqueue_long",
+        method: "go1_fcloud.go1_fcloud.doctype.go1_fcloud_site.go1_fcloud_site.sync_site_enqueue",
         async: true,
         freeze: true,
         freeze_message: "Syncing Site From Frappe Cloud",
