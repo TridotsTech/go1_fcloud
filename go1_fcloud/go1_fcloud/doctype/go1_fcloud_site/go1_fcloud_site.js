@@ -229,7 +229,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                         method: "get_all_site",
                         async: false,
                         callback: function (r) {
-                            let data = r.message.message
+                            let data = r.message
                             for (let d of data) {
                                 if (frm.doc.url != d.name) {
                                     options += `\n${d.name}`
@@ -490,7 +490,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                         async: false,
                         callback: function (r) {
                             // console.log(r.message)
-                            data = r.message.message
+                            data = r.message
                             for (let c of data) {
                                 // console.log(c.repository_owner)
                                 custom.push({ "title": c.title, "repo": c.repository_owner, "branch": c.branch, "app": c.app })
@@ -624,9 +624,9 @@ frappe.ui.form.on("Go1 FCloud Site", {
                 callback: function (r) {
                     if (r.message) {
                         // console.log(r.message.message)
-                        var versions = r.message['message']["versions"]
+                        var versions = r['message']["versions"]
                         // console.log(versions)
-                        let resData = JSON.stringify(r.message.message)
+                        let resData = JSON.stringify(r.message)
                         // console.log("res data")
                         // console.log(resData)
                         frm.set_value("site_data", resData)
@@ -647,7 +647,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                 async: false,
                 callback: function (r) {
                     if (r.message) {
-                        let data = JSON.stringify(r.message.message)
+                        let data = JSON.stringify(r.message)
                         frm.set_value("plans", data)
                         let plans = ""
                         // console.log("Getting plans")
@@ -670,7 +670,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                 callback: function (r) {
                     if (r.message) {
                         // console.log(r.message.message)
-                        let data = r.message['message']
+                        let data = r['message']
                         let resData = JSON.stringify(data)
                         frm.set_value("bench_data", resData)
                         let benchOptions = ""
@@ -819,7 +819,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                 if (r.message) {
                     // console.log("bench list called...")
                     // console.log(r.message.message)
-                    let data = r.message['message']
+                    let data = r['message']
                     let resData = JSON.stringify(data)
                     frm.set_value("bench_data", resData)
                     let benchOptions = ""
@@ -829,7 +829,6 @@ frappe.ui.form.on("Go1 FCloud Site", {
                     }
                     frm.fields_dict.bench.df.options = benchOptions
                     frm.refresh_field('bench')
-
                 }
             }
         })
@@ -913,7 +912,7 @@ frappe.ui.form.on("Go1 FCloud Site", {
                 },
                 callback: function (r) {
                     // console.log(r.message)
-                    var apps = r.message.message
+                    var apps = r.message
                     for (var app of apps) {
                         frm.add_child("installed", {
                             "app_name": app.name

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "go1_fcloud"
+authors = [
+    {name = "Tridots Tech", email = "info@tridotstech.com"}
+]
+description = "Frappe Cloud operations integrated with ERPNext. Crafted by Tridots Tech Pvt. Ltd."
+requires-python = ">=3.14"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/your-org/go1_fcloud"
