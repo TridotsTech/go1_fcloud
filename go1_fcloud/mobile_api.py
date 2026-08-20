@@ -407,6 +407,7 @@ def get_bench(name):
 		return _ok({
 			"name": doc.name,
 			"bench": doc.bench,
+			"bench_id": doc.id,
 			"status": doc.status,
 			"version": doc.version,
 			"region": doc.region,
