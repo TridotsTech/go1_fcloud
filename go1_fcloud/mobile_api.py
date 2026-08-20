@@ -474,7 +474,24 @@ def bench_action(name, action):
 		frappe.log_error("mobile_api.bench_action", frappe.get_traceback())
 		return _err(f"Action '{action}' failed.")
 
-
+@frappe.whitelist()
+def deploy_and_update(bench_id, apps, sites):
+	"""
+	Deploy a new version of the bench and update all sites.
+	"""
+	try:
+		_require_role()
+		deploy_result = cloud_post("press.api.bench.deploy", {"name": bench_id})
+		if not unwrap(deploy_result):
+			return _err("Bench deploy failed.")
+		apps = json.loads(apps) if isinstance(apps, str) else apps
+		sites = json.loads(sites) if isinstance(sites, str) else sites
+		update_result = cloud_post("press.api.bench.deploy_and_update", {"name": bench_id, "apps": apps, "sites": sites})
+		return _ok({"deploy": unwrap(deploy_result), "update": unwrap(update_result)})
+	except Exception:
+		frappe.log_error("mobile_api.deploy_and_update", frappe.get_traceback())
+		return _err("Failed to deploy and update bench.")
+	
 @frappe.whitelist()
 def get_bench_jobs(bench_id):
 	"""
