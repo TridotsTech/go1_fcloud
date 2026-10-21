@@ -123,18 +123,8 @@ def cloud_request(endpoint: str, method: str = "GET", params: dict = None):
         if method.upper() == "GET":
             response = requests.get(url, headers=headers, params=params, timeout=30)
         else:
-            # Frappe's JS client (frappe.call) sends form-encoded POST data
-            # and JSON-stringifies nested object/array values.  The server
-            # then calls json.loads() on each string parameter.  Using
-            # data= (form-encoded) instead of json= (JSON body) keeps
-            # string values as strings so the Cloud API can parse them
-            # without a double-decode TypeError.
-            if params:
-                params = {
-                    k: json.dumps(v) if isinstance(v, (dict, list)) else v
-                    for k, v in params.items()
-                }
-            response = requests.post(url, headers=headers, data=params, timeout=30)
+            # Press dashboard (Vue.js) sends JSON body via axios.
+            response = requests.post(url, headers=headers, json=params, timeout=30)
 
         response.raise_for_status()
         data = response.json()

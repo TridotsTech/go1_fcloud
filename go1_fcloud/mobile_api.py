@@ -623,19 +623,22 @@ def create_bench(title, version, cluster, apps=None, server=None):
                     src = a["source"]
                     if isinstance(src, dict):
                         src = src.get("name") or src.get("source", "")
-                    app_list.append({"name": a["title"], "source": src})
+                    app_list.append({"name": a["title"], "source": str(src)})
         if not app_list:
             options = unwrap(cloud_post("press.api.bench.options")) or {}
+            frappe.log_error(
+                "create_bench:options_versions",
+                json.dumps(options.get("versions", []), default=str)[:3000],
+            )
             frappe_source = None
             for v in options.get("versions", []):
                 if v.get("name") == version:
                     for app in v.get("apps", []):
                         if app.get("name") == "frappe":
                             src = app.get("source")
-                            # source may be a string ID or a dict object
                             if isinstance(src, dict):
                                 src = src.get("name") or src.get("source", "")
-                            frappe_source = src
+                            frappe_source = str(src) if src else None
                             break
                     break
             if not frappe_source:
@@ -646,13 +649,16 @@ def create_bench(title, version, cluster, apps=None, server=None):
             "bench": {
                 "title": title,
                 "version": version,
-                "cluster": cluster if not server else "",
-                "server": server or "",
-                "saas_app": "",
+                "cluster": cluster if not server else None,
+                "server": server or None,
+                "saas_app": None,
                 "apps": app_list,
             }
         }
-        frappe.log_error("mobile_api.create_bench:payload", json.dumps(payload, default=str))
+        frappe.log_error(
+            "create_bench:payload",
+            json.dumps(payload, default=str),
+        )
         result = cloud_post("press.api.bench.new", payload)
         bench_id = unwrap(result)
         if bench_id:
