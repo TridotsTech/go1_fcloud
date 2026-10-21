@@ -714,6 +714,39 @@ def get_server(name):
         return _err(f"Failed to fetch server: {name}")
 
 
+@frappe.whitelist()
+def create_server(title, cluster, plan, db_plan):
+    """
+    Create a new server on Frappe Cloud.
+
+    Args:
+      title:    Server name
+      cluster:  Cluster/region name
+      plan:     App server plan (machine type / plan name)
+      db_plan:  Database server plan (machine type / plan name)
+    """
+    try:
+        _require_role()
+        payload = {
+            "server": {
+                "title": title,
+                "cluster": cluster,
+                "plan": plan,
+                "db_plan": db_plan,
+            }
+        }
+        result = cloud_post("press.api.server.new", payload)
+        server_name = unwrap(result)
+        if server_name:
+            return _ok({"name": server_name})
+        return _ok(unwrap(result))
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.create_server", frappe.get_traceback())
+        return _err("Failed to create server.")
+
+
 # =========================================================================== #
 #  ACCOUNT
 # =========================================================================== #

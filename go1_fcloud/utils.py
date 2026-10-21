@@ -4,6 +4,8 @@
 # utils.py — Shared utilities for all go1_fcloud doctypes.
 # Single source of truth for Frappe Cloud auth and HTTP requests.
 
+import json
+
 import frappe
 from frappe import _
 import requests
@@ -59,6 +61,29 @@ def get_headers():
     }
 
 
+def _parse_cloud_error(response):
+    """Extract a readable error message from a Frappe Cloud error response.
+
+    Frappe wraps validation errors in _server_messages — a JSON-encoded list
+    of JSON-encoded strings (or dicts). This helper digs through that nesting
+    so callers see the real message instead of raw escaped JSON.
+    """
+    try:
+        data = response.json()
+        server_messages = data.get("_server_messages")
+        if server_messages:
+            messages = json.loads(server_messages)
+            if messages:
+                first = messages[0]
+                parsed = json.loads(first) if isinstance(first, str) else first
+                if isinstance(parsed, dict):
+                    return parsed.get("message", str(parsed))
+                return str(parsed)
+        return data.get("exception") or response.text[:300]
+    except Exception:
+        return response.text[:300]
+
+
 def cloud_request(endpoint: str, method: str = "GET", params: dict = None):
     """
     Make an authenticated request to the Frappe Cloud API.
@@ -104,12 +129,9 @@ def cloud_request(endpoint: str, method: str = "GET", params: dict = None):
             _("Cannot connect to Frappe Cloud. Check your internet connection.")
         )
     except requests.exceptions.HTTPError as e:
-        frappe.log_error(f"cloud_request:{endpoint}", str(e))
-        frappe.throw(
-            _(
-                f"Frappe Cloud returned HTTP {response.status_code}: {response.text[:200]}"
-            )
-        )
+        error_msg = _parse_cloud_error(response)
+        frappe.log_error(f"cloud_request:{endpoint}", f"{e}\n{error_msg}")
+        frappe.throw(_(f"Frappe Cloud error: {error_msg}"))
     except Exception:
         frappe.log_error(f"cloud_request:{endpoint}", frappe.get_traceback())
         raise
