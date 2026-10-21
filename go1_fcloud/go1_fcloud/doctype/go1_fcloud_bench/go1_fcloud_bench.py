@@ -832,6 +832,16 @@ def sync_bench():
             doc.insert(ignore_permissions=True)
             frappe.db.commit()
 
+        # Mark local benches as dropped if deleted from Frappe Cloud
+        if cloud_benches:
+            cloud_titles = {b.get("title", "") for b in cloud_benches}
+            for local in local_benches:
+                if local["bench"] not in cloud_titles:
+                    frappe.db.set_value(
+                        "Go1 FCloud Bench", local["name"], "is_dropped", 1
+                    )
+            frappe.db.commit()
+
     except Exception:
         frappe.log_error("sync_bench", frappe.get_traceback())
 
