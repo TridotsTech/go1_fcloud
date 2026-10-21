@@ -913,6 +913,82 @@ def get_marketplace_apps(search=None):
         return _err("Failed to fetch marketplace apps.")
 
 
+@frappe.whitelist()
+def get_marketplace_app_list(search=None):
+    """
+    List all published Marketplace Apps available on Frappe Cloud.
+
+    Args:
+      search:  Optional search string to filter by app title/name.
+
+    Returns list of apps with name, title, image, description, etc.
+    """
+    try:
+        _require_role()
+        apps = (
+            unwrap(cloud_post("press.api.marketplace.get_marketplace_apps")) or []
+        )
+        if search:
+            q = search.lower()
+            apps = [
+                a
+                for a in apps
+                if q in (a.get("title") or a.get("name") or "").lower()
+            ]
+        return _ok(apps)
+    except Exception:
+        frappe.log_error(
+            "mobile_api.get_marketplace_app_list", frappe.get_traceback()
+        )
+        return _err("Failed to fetch marketplace app list.")
+
+
+@frappe.whitelist()
+def get_marketplace_app_detail(app):
+    """
+    Get details of a single Marketplace App.
+
+    Args:
+      app:  Marketplace App name (e.g. "erpnext")
+    """
+    try:
+        _require_role()
+        result = cloud_post("press.api.marketplace.get", {"app": app})
+        return _ok(unwrap(result))
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error(
+            "mobile_api.get_marketplace_app_detail", frappe.get_traceback()
+        )
+        return _err("Failed to fetch marketplace app details.")
+
+
+@frappe.whitelist()
+def get_marketplace_app_install_options(marketplace_app):
+    """
+    Get options for installing a marketplace app (plans, groups, clusters).
+
+    Args:
+      marketplace_app:  Marketplace App name
+    """
+    try:
+        _require_role()
+        result = cloud_post(
+            "press.api.marketplace.options_for_quick_install",
+            {"marketplace_app": marketplace_app},
+        )
+        return _ok(unwrap(result))
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error(
+            "mobile_api.get_marketplace_app_install_options",
+            frappe.get_traceback(),
+        )
+        return _err("Failed to fetch marketplace app install options.")
+
+
 # =========================================================================== #
 #  SYNC  (pull Frappe Cloud data into local Frappe DocTypes)
 # =========================================================================== #
