@@ -674,6 +674,51 @@ def create_bench(title, version, cluster, apps=None, server=None):
         return _err("Failed to create bench.")
 
 
+@frappe.whitelist()
+def deploy_bench(name):
+    """
+    Deploy a bench that is in 'Awaiting Deploy' status.
+
+    Fetches deploy information to get the list of apps with pending
+    updates and triggers a deploy on Frappe Cloud.
+
+    Args:
+      name:  Go1 FCloud Bench doc name
+    """
+    try:
+        _require_role()
+        doc = frappe.get_doc("Go1 FCloud Bench", name)
+        bench_id = doc.id or doc.bench
+
+        # Get deploy information (apps with pending updates)
+        info = unwrap(
+            cloud_post("press.api.bench.deploy_information", {"name": bench_id})
+        )
+        if not info:
+            return _err("Could not fetch deploy information.")
+
+        if info.get("deploy_in_progress"):
+            return _err("A deploy is already in progress for this bench.")
+
+        apps = info.get("apps", [])
+        apps_to_deploy = [app for app in apps if app.get("update_available")]
+        if not apps_to_deploy:
+            return _err("No updates available to deploy.")
+
+        result = cloud_post(
+            "press.api.bench.deploy", {"name": bench_id, "apps": apps_to_deploy}
+        )
+        candidate = unwrap(result)
+        if candidate:
+            return _ok({"candidate": candidate})
+        return _ok(unwrap(result))
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.deploy_bench", frappe.get_traceback())
+        return _err("Failed to deploy bench.")
+
+
 # =========================================================================== #
 #  SERVERS
 # =========================================================================== #
