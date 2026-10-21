@@ -69,6 +69,7 @@ def _parse_cloud_error(response):
     """
     try:
         data = response.json()
+        # 1. Try _server_messages (most descriptive)
         server_messages = data.get("_server_messages")
         if server_messages:
             messages = json.loads(server_messages)
@@ -78,7 +79,23 @@ def _parse_cloud_error(response):
                 if isinstance(parsed, dict):
                     return parsed.get("message", str(parsed))
                 return str(parsed)
-        return data.get("exception") or response.text[:300]
+        # 2. Try exception field
+        if data.get("exception"):
+            return str(data["exception"])[:500]
+        # 3. Try exc field (contains the Python traceback)
+        exc = data.get("exc")
+        if exc:
+            try:
+                exc_list = json.loads(exc) if isinstance(exc, str) else exc
+                if isinstance(exc_list, list) and exc_list:
+                    return str(exc_list[-1]).strip()[:500]
+            except (json.JSONDecodeError, TypeError):
+                pass
+            return str(exc)[:500]
+        # 4. Use exc_type if nothing else available
+        if data.get("exc_type"):
+            return str(data["exc_type"])
+        return response.text[:300]
     except Exception:
         return response.text[:300]
 
@@ -140,7 +157,10 @@ def cloud_request(endpoint: str, method: str = "GET", params: dict = None):
         )
     except requests.exceptions.HTTPError as e:
         error_msg = _parse_cloud_error(response)
-        frappe.log_error(f"cloud_request:{endpoint}", f"{e}\n{error_msg}")
+        frappe.log_error(
+            f"cloud_request:{endpoint}",
+            f"HTTP {response.status_code}\n{error_msg}\n---\n{response.text[:1000]}",
+        )
         frappe.throw(_(f"Frappe Cloud error: {error_msg}"))
     except Exception:
         frappe.log_error(f"cloud_request:{endpoint}", frappe.get_traceback())

@@ -620,7 +620,10 @@ def create_bench(title, version, cluster, apps=None, server=None):
         if apps:
             for a in json.loads(apps) if isinstance(apps, str) else apps:
                 if isinstance(a, dict) and "title" in a and "source" in a:
-                    app_list.append({"name": a["title"], "source": a["source"]})
+                    src = a["source"]
+                    if isinstance(src, dict):
+                        src = src.get("name") or src.get("source", "")
+                    app_list.append({"name": a["title"], "source": src})
         if not app_list:
             options = unwrap(cloud_post("press.api.bench.options")) or {}
             frappe_source = None
@@ -628,7 +631,11 @@ def create_bench(title, version, cluster, apps=None, server=None):
                 if v.get("name") == version:
                     for app in v.get("apps", []):
                         if app.get("name") == "frappe":
-                            frappe_source = app.get("source")
+                            src = app.get("source")
+                            # source may be a string ID or a dict object
+                            if isinstance(src, dict):
+                                src = src.get("name") or src.get("source", "")
+                            frappe_source = src
                             break
                     break
             if not frappe_source:
@@ -645,6 +652,7 @@ def create_bench(title, version, cluster, apps=None, server=None):
                 "apps": app_list,
             }
         }
+        frappe.log_error("mobile_api.create_bench:payload", json.dumps(payload, default=str))
         result = cloud_post("press.api.bench.new", payload)
         bench_id = unwrap(result)
         if bench_id:
