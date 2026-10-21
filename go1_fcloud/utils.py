@@ -107,6 +107,16 @@ def cloud_request(endpoint: str, method: str = "GET", params: dict = None):
         if method.upper() == "GET":
             response = requests.get(url, headers=headers, params=params, timeout=30)
         else:
+            # Frappe's JS client (frappe.call) JSON-stringifies nested
+            # object/array values before posting.  The server-side handler
+            # then calls json.loads() on each string parameter.  If we send
+            # raw nested dicts, json.loads(dict) raises TypeError.  Mimic
+            # the JS behaviour so the Cloud API receives the types it expects.
+            if params:
+                params = {
+                    k: json.dumps(v) if isinstance(v, (dict, list)) else v
+                    for k, v in params.items()
+                }
             response = requests.post(url, headers=headers, json=params, timeout=30)
 
         response.raise_for_status()
