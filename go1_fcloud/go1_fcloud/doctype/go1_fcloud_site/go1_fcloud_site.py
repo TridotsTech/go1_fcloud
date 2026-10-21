@@ -671,6 +671,15 @@ def sync_site():
             doc.insert(ignore_permissions=True)
             frappe.db.commit()
 
+        # Mark local sites that no longer exist on Frappe Cloud as dropped
+        cloud_urls = {s.get("name", "") for s in cloud_sites}
+        for local in local_sites:
+            if local["url"] not in cloud_urls:
+                frappe.db.set_value(
+                    "Go1 FCloud Site", local["name"], "is_dropped", 1
+                )
+        frappe.db.commit()
+
     except Exception:
         frappe.log_error("sync_site", frappe.get_traceback())
 
