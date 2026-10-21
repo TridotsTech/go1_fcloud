@@ -621,6 +621,8 @@ def create_bench(title, version, cluster, apps=None, server=None):
             for a in json.loads(apps) if isinstance(apps, str) else apps:
                 if isinstance(a, dict) and "title" in a and "source" in a:
                     app_list.append({"name": a["title"], "source": a["source"]})
+        if not app_list:
+            app_list.append({"name": "frappe", "source": "frappe/frappe"})
 
         payload = {
             "bench": {
