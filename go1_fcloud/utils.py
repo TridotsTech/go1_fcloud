@@ -31,7 +31,7 @@ def get_token():
     try:
         cfg = get_config()
         if not cfg.api_key:
-            frappe.throw(_(("API Key is not configured in Go1 FCloud Configuration.")))
+            frappe.throw(_("API Key is not configured in Go1 FCloud Configuration."))
         secret = cfg.get_password("api_secret")
         if not secret:
             frappe.throw(_("API Secret is not configured in Go1 FCloud Configuration."))
