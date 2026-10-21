@@ -622,7 +622,18 @@ def create_bench(title, version, cluster, apps=None, server=None):
                 if isinstance(a, dict) and "title" in a and "source" in a:
                     app_list.append({"name": a["title"], "source": a["source"]})
         if not app_list:
-            app_list.append({"name": "frappe", "source": "frappe/frappe"})
+            options = unwrap(cloud_post("press.api.bench.options")) or {}
+            frappe_source = None
+            for v in options.get("versions", []):
+                if v.get("name") == version:
+                    for app in v.get("apps", []):
+                        if app.get("name") == "frappe":
+                            frappe_source = app.get("source")
+                            break
+                    break
+            if not frappe_source:
+                return _err(f"Could not find frappe app source for {version}")
+            app_list.append({"name": "frappe", "source": frappe_source})
 
         payload = {
             "bench": {
