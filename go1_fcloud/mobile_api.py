@@ -715,6 +715,22 @@ def get_server(name):
 
 
 @frappe.whitelist()
+def get_server_options():
+    """
+    Return options for creating a new server:
+      clusters, plans, db_plans, etc.
+    Endpoint: press.api.server.options
+    """
+    try:
+        _require_role()
+        result = cloud_post("press.api.server.options")
+        return _ok(unwrap(result))
+    except Exception:
+        frappe.log_error("mobile_api.get_server_options", frappe.get_traceback())
+        return _err("Failed to fetch server creation options.")
+
+
+@frappe.whitelist()
 def create_server(title, cluster, plan, db_plan):
     """
     Create a new server on Frappe Cloud.
