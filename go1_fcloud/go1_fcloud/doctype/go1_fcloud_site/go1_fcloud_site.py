@@ -589,12 +589,26 @@ def sync_site():
         local_sites = frappe.get_all(
             "Go1 FCloud Site", filters={"is_dropped": 0}, fields=["url", "name"]
         )
-        local_urls = {s["url"] for s in local_sites}
+        local_by_url = {s["url"]: s["name"] for s in local_sites}
 
         for site in cloud_sites:
             site_name = site.get("name", "")
-            if site_name in local_urls:
-                continue  # Already synced
+
+            if site_name in local_by_url:
+                # Update status and key fields for existing sites
+                local_name = local_by_url[site_name]
+                doc = frappe.get_doc("Go1 FCloud Site", local_name)
+                doc.status = site.get("status", "")
+                doc.version = site.get("version", "")
+                doc.region = site.get("cluster", "")
+                plan = site.get("plan")
+                if plan:
+                    doc.plan = (
+                        f"{plan.get('name','')} - INR {int(plan.get('price_inr', 0))}"
+                    )
+                doc.save(ignore_permissions=True)
+                frappe.db.commit()
+                continue
 
             doc = frappe.new_doc("Go1 FCloud Site")
             parts = site_name.partition(".")
