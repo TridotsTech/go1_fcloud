@@ -515,6 +515,18 @@ def get_bench(name):
             }
             for a in cloud_apps
         ]
+
+        # Check if updates are available
+        deploy_info = (
+            unwrap(
+                cloud_post(
+                    "press.api.bench.deploy_information", {"name": bench_id}
+                )
+            )
+            or {}
+        )
+        update_available = deploy_info.get("update_available", False)
+
         deploys = [
             {
                 "name": d.title,
@@ -537,6 +549,7 @@ def get_bench(name):
                 "region": doc.region,
                 "server_id": doc.server_id,
                 "project": doc.project,
+                "update_available": update_available,
                 "apps": apps,
                 "recent_deploys": deploys,
                 "linked_sites": sites,
@@ -782,6 +795,70 @@ def deploy_bench(name):
     except Exception:
         frappe.log_error("mobile_api.deploy_bench", frappe.get_traceback())
         return _err("Failed to deploy bench.")
+
+
+@frappe.whitelist()
+def get_bench_deploy_info(name):
+    """
+    Return deploy information for a bench: apps with update status
+    (from/to commit, update_available flag) and sites on the bench.
+
+    Args:
+      name:  Go1 FCloud Bench doc name
+    """
+    try:
+        _require_role()
+        doc = frappe.get_doc("Go1 FCloud Bench", name)
+        bench_id = doc.id or doc.bench
+
+        info = (
+            unwrap(
+                cloud_post(
+                    "press.api.bench.deploy_information", {"name": bench_id}
+                )
+            )
+            or {}
+        )
+
+        apps = []
+        for app in info.get("apps", []):
+            apps.append(
+                {
+                    "name": app.get("app", ""),
+                    "title": app.get("title", ""),
+                    "branch": app.get("branch", ""),
+                    "repository": app.get("repository", ""),
+                    "repository_owner": app.get("repository_owner", ""),
+                    "current_hash": app.get("current_hash", ""),
+                    "next_hash": app.get("next_hash", ""),
+                    "current_tag": app.get("current_tag", ""),
+                    "next_tag": app.get("next_tag", ""),
+                    "current_release": app.get("current_release", ""),
+                    "next_release": app.get("next_release", ""),
+                    "update_available": app.get("update_available", False),
+                    "will_branch_change": app.get("will_branch_change", False),
+                }
+            )
+
+        sites = info.get("sites", [])
+
+        return _ok(
+            {
+                "update_available": info.get("update_available", False),
+                "deploy_in_progress": info.get("deploy_in_progress", False),
+                "number_of_apps": info.get("number_of_apps", 0),
+                "removed_apps": info.get("removed_apps", []),
+                "apps": apps,
+                "sites": sites,
+            }
+        )
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error(
+            "mobile_api.get_bench_deploy_info", frappe.get_traceback()
+        )
+        return _err("Failed to fetch bench deploy information.")
 
 
 # =========================================================================== #
