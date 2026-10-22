@@ -949,37 +949,19 @@ def get_marketplace_app_list(bench_name=None, search=None):
                 or []
             )
 
-            # 2. Apps with image & description
-            onboarding = (
-                unwrap(
-                    cloud_post(
-                        "press.api.marketplace.get_marketplace_apps_for_onboarding"
-                    )
-                )
-                or []
-            )
-            image_map = {
-                a["name"]: {
-                    "image": a.get("image"),
-                    "description": a.get("description"),
-                }
-                for a in onboarding
-            }
-
-            # 3. Bench options for repository / branch per app
+            # 2. Repo / branch lookup from bench options
             bench_opts = unwrap(cloud_post("press.api.bench.options")) or {}
             source_map = {}  # app_name -> {repository, branches[]}
             for ver in bench_opts.get("versions", []):
-                for app in ver.get("apps", []):
-                    app_name = app.get("name", "")
+                for opt_app in ver.get("apps", []):
+                    app_name = opt_app.get("name", "")
                     if app_name in source_map:
-                        # merge branches from other versions
-                        for src in app.get("sources", []):
+                        for src in opt_app.get("sources", []):
                             branch = src.get("branch")
                             if branch and branch not in source_map[app_name]["branches"]:
                                 source_map[app_name]["branches"].append(branch)
                         continue
-                    sources = app.get("sources") or []
+                    sources = opt_app.get("sources") or []
                     first = sources[0] if sources else {}
                     source_map[app_name] = {
                         "repository": (
@@ -993,12 +975,19 @@ def get_marketplace_app_list(bench_name=None, search=None):
                         ),
                     }
 
-            # Merge into apps list
+            # 3. Enrich each app with image, description, repo, branches
             for app in apps:
                 name = app.get("name", "")
-                extra = image_map.get(name, {})
-                app["image"] = extra.get("image") or ""
-                app["description"] = extra.get("description") or ""
+                # Fetch detail per app (image, description)
+                try:
+                    detail = unwrap(
+                        cloud_post("press.api.marketplace.get", {"app": name})
+                    ) or {}
+                except Exception:
+                    detail = {}
+                app["image"] = detail.get("image") or ""
+                app["description"] = detail.get("description") or ""
+
                 src = source_map.get(name, {})
                 app["repository"] = src.get("repository", "")
                 app["repository_url"] = src.get("repository_url", "")
