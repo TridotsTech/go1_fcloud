@@ -914,20 +914,39 @@ def get_marketplace_apps(search=None):
 
 
 @frappe.whitelist()
-def get_marketplace_app_list(search=None):
+def get_marketplace_app_list(bench_name=None, search=None):
     """
-    List all published Marketplace Apps available on Frappe Cloud.
+    List published Marketplace Apps available on Frappe Cloud.
+
+    When bench_name is provided, returns apps not yet installed on that
+    bench, with image, repository, branch (sources) and install counts.
+    Without bench_name, returns all published marketplace apps.
 
     Args:
-      search:  Optional search string to filter by app title/name.
-
-    Returns list of apps with name, title, image, description, etc.
+      bench_name:  Optional Go1 FCloud Bench doc name to filter apps
+                   not already installed on that bench.
+      search:      Optional search string to filter by app title/name.
     """
     try:
         _require_role()
-        apps = (
-            unwrap(cloud_post("press.api.marketplace.get_marketplace_apps")) or []
-        )
+
+        if bench_name:
+            doc = frappe.get_doc("Go1 FCloud Bench", bench_name)
+            bench_id = doc.id or doc.bench
+            apps = (
+                unwrap(
+                    cloud_post("press.api.bench.all_apps", {"name": bench_id})
+                )
+                or []
+            )
+        else:
+            apps = (
+                unwrap(
+                    cloud_post("press.api.marketplace.get_marketplace_apps")
+                )
+                or []
+            )
+
         if search:
             q = search.lower()
             apps = [
@@ -936,6 +955,8 @@ def get_marketplace_app_list(search=None):
                 if q in (a.get("title") or a.get("name") or "").lower()
             ]
         return _ok(apps)
+    except frappe.ValidationError as e:
+        return _err(str(e))
     except Exception:
         frappe.log_error(
             "mobile_api.get_marketplace_app_list", frappe.get_traceback()
