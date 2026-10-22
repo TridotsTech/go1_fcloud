@@ -920,7 +920,8 @@ def get_marketplace_app_list(bench_name=None, search=None):
 
     When bench_name is provided, returns apps not yet installed on that
     bench, with image, repository, branch (sources) and install counts.
-    Without bench_name, returns all published marketplace apps.
+    Without bench_name, returns all published marketplace apps enriched
+    with image, description, repository, and branches.
 
     Args:
       bench_name:  Optional Go1 FCloud Bench doc name to filter apps
@@ -940,12 +941,68 @@ def get_marketplace_app_list(bench_name=None, search=None):
                 or []
             )
         else:
+            # 1. Full published apps list (name, title, route)
             apps = (
                 unwrap(
                     cloud_post("press.api.marketplace.get_marketplace_apps")
                 )
                 or []
             )
+
+            # 2. Apps with image & description
+            onboarding = (
+                unwrap(
+                    cloud_post(
+                        "press.api.marketplace.get_marketplace_apps_for_onboarding"
+                    )
+                )
+                or []
+            )
+            image_map = {
+                a["name"]: {
+                    "image": a.get("image"),
+                    "description": a.get("description"),
+                }
+                for a in onboarding
+            }
+
+            # 3. Bench options for repository / branch per app
+            bench_opts = unwrap(cloud_post("press.api.bench.options")) or {}
+            source_map = {}  # app_name -> {repository, branches[]}
+            for ver in bench_opts.get("versions", []):
+                for app in ver.get("apps", []):
+                    app_name = app.get("name", "")
+                    if app_name in source_map:
+                        # merge branches from other versions
+                        for src in app.get("sources", []):
+                            branch = src.get("branch")
+                            if branch and branch not in source_map[app_name]["branches"]:
+                                source_map[app_name]["branches"].append(branch)
+                        continue
+                    sources = app.get("sources") or []
+                    first = sources[0] if sources else {}
+                    source_map[app_name] = {
+                        "repository": (
+                            f"{first.get('repository_owner', '')}/{first.get('repository', '')}"
+                            if first.get("repository")
+                            else ""
+                        ),
+                        "repository_url": first.get("repository_url", ""),
+                        "branches": list(
+                            {s.get("branch") for s in sources if s.get("branch")}
+                        ),
+                    }
+
+            # Merge into apps list
+            for app in apps:
+                name = app.get("name", "")
+                extra = image_map.get(name, {})
+                app["image"] = extra.get("image") or ""
+                app["description"] = extra.get("description") or ""
+                src = source_map.get(name, {})
+                app["repository"] = src.get("repository", "")
+                app["repository_url"] = src.get("repository_url", "")
+                app["branches"] = src.get("branches", [])
 
         if search:
             q = search.lower()
