@@ -261,17 +261,68 @@ def site_action(name, action, extra=None):
 
 
 @frappe.whitelist()
-def get_site_options():
+def get_site_options(bench_name=None):
     """
-    Return all options needed to create a new site:
-      groups, clusters, plans, shared_options.
+    Return options needed to create a new site.
+
+    With bench_name:
+      Returns apps, clusters and plans for that private bench.
+
+    Without bench_name:
+      Returns Framework Versions (each with selectable apps and
+      regions/clusters), Plans (with cloud_provider and cluster info),
+      and marketplace app details (image, description).
+
+    Args:
+      bench_name:  Optional Go1 FCloud Bench doc name for private bench sites.
     """
     try:
         _require_role()
+
+        if bench_name:
+            doc = frappe.get_doc("Go1 FCloud Bench", bench_name)
+            bench_id = doc.id or doc.bench
+            options = (
+                unwrap(
+                    cloud_post(
+                        "press.api.site.get_new_site_options",
+                        {"group": bench_id},
+                    )
+                )
+                or {}
+            )
+        else:
+            options = (
+                unwrap(cloud_post("press.api.site.get_new_site_options")) or {}
+            )
+
         plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
-        options = unwrap(cloud_post("press.api.site.get_new_site_options")) or {}
-        bench_list = unwrap(cloud_post("press.api.bench.all")) or []
-        return _ok({"plans": plans, "options": options, "benches": bench_list})
+
+        # Extract unique providers and regions from plans for filters
+        providers = set()
+        regions = set()
+        for p in plans:
+            for cp in p.get("cloud_providers", []):
+                providers.add(cp)
+            for cl in p.get("clusters", []):
+                regions.add(cl)
+        # Also collect regions from version clusters
+        for v in options.get("versions", []):
+            group = v.get("group") or {}
+            for cl in group.get("clusters", []):
+                regions.add(cl.get("name", ""))
+
+        return _ok(
+            {
+                "versions": options.get("versions", []),
+                "marketplace_apps": options.get("marketplace_apps", {}),
+                "plans": plans,
+                "filters": {
+                    "providers": sorted(providers),
+                    "regions": sorted(r for r in regions if r),
+                },
+            }
+        )
     except Exception:
         frappe.log_error("mobile_api.get_site_options", frappe.get_traceback())
         return _err("Failed to fetch site creation options.")
