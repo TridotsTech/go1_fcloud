@@ -805,18 +805,30 @@ def sync_bench():
         local_benches = frappe.get_all(
             "Go1 FCloud Bench", filters={"is_dropped": 0}, fields=["bench", "name"]
         )
-        local_titles = {b["bench"] for b in local_benches}
+        local_by_title = {b["bench"]: b["name"] for b in local_benches}
 
         for bench in cloud_benches:
             title = bench.get("title", "")
-            if title in local_titles:
+            bench_id = bench.get("name", "")
+
+            if title in local_by_title:
+                # Update status and key fields for existing benches
+                local_name = local_by_title[title]
+                doc = frappe.get_doc("Go1 FCloud Bench", local_name)
+                doc.status = bench.get("status", "")
+                doc.version = bench.get("version", "")
+                if bench_id and not doc.id:
+                    doc.id = bench_id
+                doc.app_data = json.dumps(get_apps(doc.id or bench_id))
+                doc.save(ignore_permissions=True)
+                frappe.db.commit()
                 continue
 
-            details = _get_cloud_bench_details(bench.get("name", ""))
+            details = _get_cloud_bench_details(bench_id)
             doc = frappe.new_doc("Go1 FCloud Bench")
             doc.data = json.dumps(bench_opts, separators=(",", ":"))
             doc.bench = title
-            doc.id = bench.get("name", "")
+            doc.id = bench_id
             doc.status = bench.get("status", "")
             doc.version = bench.get("version", "")
             doc.region = details.get("region", "")
