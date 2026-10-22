@@ -648,15 +648,20 @@ def deploy_and_update(bench_id, apps, sites):
 
 
 @frappe.whitelist()
-def get_bench_jobs(bench_id):
+def get_bench_jobs(name):
     """
-    Return running jobs for a bench (Release Group).
-    Uses press.api.bench.running_jobs.
+    Return running jobs for a bench.
+
+    Args:
+      name:  Go1 FCloud Bench doc name
     """
     try:
         _require_role()
+        doc = frappe.get_doc("Go1 FCloud Bench", name)
+        bench_id = doc.id or doc.bench
         running = (
-            unwrap(cloud_post("press.api.bench.running_jobs", {"name": bench_id})) or []
+            unwrap(cloud_post("press.api.bench.running_jobs", {"name": bench_id}))
+            or []
         )
         return _ok(running)
     except Exception:
@@ -859,6 +864,61 @@ def get_bench_deploy_info(name):
             "mobile_api.get_bench_deploy_info", frappe.get_traceback()
         )
         return _err("Failed to fetch bench deploy information.")
+
+
+@frappe.whitelist()
+def get_bench_deploys(name):
+    """
+    Return deploy history (candidates) for a bench.
+
+    Args:
+      name:  Go1 FCloud Bench doc name
+    """
+    try:
+        _require_role()
+        doc = frappe.get_doc("Go1 FCloud Bench", name)
+        bench_id = doc.id or doc.bench
+        candidates = (
+            unwrap(
+                cloud_post(
+                    "press.api.bench.candidates",
+                    {"filters": {"group": bench_id}},
+                )
+            )
+            or {}
+        )
+        return _ok(candidates)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_bench_deploys", frappe.get_traceback())
+        return _err("Failed to fetch bench deploy history.")
+
+
+@frappe.whitelist()
+def get_bench_deploy_candidate(candidate_name):
+    """
+    Return status of a specific deploy candidate: build steps,
+    apps, jobs, and current status.
+
+    Args:
+      candidate_name:  Deploy Candidate name (e.g. "deploy-candidate-00123")
+    """
+    try:
+        _require_role()
+        result = unwrap(
+            cloud_post(
+                "press.api.bench.candidate", {"name": candidate_name}
+            )
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error(
+            "mobile_api.get_bench_deploy_candidate", frappe.get_traceback()
+        )
+        return _err("Failed to fetch deploy candidate status.")
 
 
 # =========================================================================== #
