@@ -1011,24 +1011,29 @@ def get_marketplace_app_list(bench_name=None, search=None):
 
 
 @frappe.whitelist()
-def get_marketplace_app_detail(app):
+def add_app_to_bench(bench_name, app, source):
     """
-    Get details of a single Marketplace App.
+    Add a marketplace app to a bench (Release Group) on Frappe Cloud.
 
     Args:
-      app:  Marketplace App name (e.g. "erpnext")
+      bench_name:  Go1 FCloud Bench doc name
+      app:         App name (e.g. "erpnext")
+      source:      App Source ID (e.g. "SRC-erpnext-542")
     """
     try:
         _require_role()
-        result = cloud_post("press.api.marketplace.get", {"app": app})
+        doc = frappe.get_doc("Go1 FCloud Bench", bench_name)
+        bench_id = doc.id or doc.bench
+        result = cloud_post(
+            "press.api.bench.add_app",
+            {"name": bench_id, "source": source, "app": app},
+        )
         return _ok(unwrap(result))
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
-        frappe.log_error(
-            "mobile_api.get_marketplace_app_detail", frappe.get_traceback()
-        )
-        return _err("Failed to fetch marketplace app details.")
+        frappe.log_error("mobile_api.add_app_to_bench", frappe.get_traceback())
+        return _err("Failed to add app to bench.")
 
 
 @frappe.whitelist()
