@@ -59,35 +59,37 @@ def dashboard():
     """
     try:
         _require_role()
-        sites = frappe.get_all(
-            "Go1 FCloud Site",
-            filters={"is_dropped": 0},
-            fields=["status"],
+        # Fetch live counts from Frappe Cloud
+        cloud_sites = unwrap(cloud_post("press.api.site.all")) or []
+        cloud_benches = (
+            unwrap(
+                cloud_post(
+                    "press.api.bench.all",
+                    {"bench_filter": {"status": "All", "tag": ""}},
+                )
+            )
+            or []
         )
-        benches = frappe.get_all(
-            "Go1 FCloud Bench",
-            filters={"is_dropped": 0},
-            fields=["status"],
-        )
-        servers = frappe.get_all("Go1 FCloud Server", fields=["status"])
+        cloud_servers = (cloud_get("press.api.server.all") or {}).get("message", []) or []
 
         site_stats = {
-            "total": len(sites),
-            "active": sum(1 for s in sites if s["status"] == "Active"),
-            "inactive": sum(1 for s in sites if s["status"] == "Inactive"),
+            "total": len(cloud_sites),
+            "active": sum(1 for s in cloud_sites if s.get("status") == "Active"),
+            "inactive": sum(1 for s in cloud_sites if s.get("status") == "Inactive"),
+            "suspended": sum(1 for s in cloud_sites if s.get("status") == "Suspended"),
             "updating": sum(
                 1
-                for s in sites
-                if s["status"] in ("Installing", "Updating", "Migrating")
+                for s in cloud_sites
+                if s.get("status") in ("Installing", "Updating", "Migrating")
             ),
         }
         bench_stats = {
-            "total": len(benches),
-            "active": sum(1 for b in benches if b["status"] == "Active"),
+            "total": len(cloud_benches),
+            "active": sum(1 for b in cloud_benches if b.get("status") == "Active"),
         }
         server_stats = {
-            "total": len(servers),
-            "active": sum(1 for s in servers if s["status"] == "Active"),
+            "total": len(cloud_servers),
+            "active": sum(1 for s in cloud_servers if s.get("status") == "Active"),
         }
 
         return _ok(
