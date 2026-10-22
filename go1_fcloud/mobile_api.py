@@ -449,7 +449,19 @@ def get_bench(name):
     try:
         _require_role()
         doc = frappe.get_doc("Go1 FCloud Bench", name)
-        apps = [{"name": a.title, "source": a.name1} for a in (doc.apps or [])]
+        bench_id = doc.id or doc.bench
+        # Fetch apps live from Frappe Cloud
+        cloud_apps = (
+            unwrap(cloud_post("press.api.bench.apps", {"name": bench_id})) or []
+        )
+        apps = [
+            {
+                "name": a.get("name", ""),
+                "title": a.get("title", ""),
+                "branch": a.get("branch", ""),
+            }
+            for a in cloud_apps
+        ]
         deploys = [
             {
                 "name": d.title,
