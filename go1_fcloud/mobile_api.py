@@ -1164,7 +1164,7 @@ def create_server(title, cluster, plan, db_plan):
             "server": {
                 "title": title,
                 "cluster": cluster,
-                "plan": plan,
+                "app_plan": plan,
                 "db_plan": db_plan,
             }
         }
