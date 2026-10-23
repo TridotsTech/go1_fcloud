@@ -219,7 +219,7 @@ def site_action(name, action, extra=None):
     Args:
       name:   Go1 FCloud Site doc name
       action: activate | deactivate | backup | migrate | clear_cache |
-              archive | login | setup_wizard_complete
+              drop_site | login | setup_wizard_complete
       extra:  JSON string with optional params (e.g. {"with_files": true})
     """
     try:
@@ -239,7 +239,7 @@ def site_action(name, action, extra=None):
             ),
             "migrate": ("press.api.site.migrate", {"name": doc.url}),
             "clear_cache": ("press.api.site.clear_cache", {"name": doc.url}),
-            "archive": ("press.api.site.archive", {"name": doc.url, "force": True}),
+            "drop_site": ("press.api.site.archive", {"name": doc.url, "force": True}),
             "login": ("press.api.site.login", {"name": doc.url}),
             "setup_wizard_complete": (
                 "press.api.site.setup_wizard_complete",
@@ -254,7 +254,7 @@ def site_action(name, action, extra=None):
         result = cloud_post(endpoint, payload)
 
         # Post-action local state update
-        if action == "archive":
+        if action == "drop_site":
             doc.is_dropped = 1
             doc.status = "Archived"
             doc.save(ignore_permissions=True)
