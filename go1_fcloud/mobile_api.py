@@ -406,8 +406,12 @@ def create_site(
         if isinstance(agree_region_laws, str):
             agree_region_laws = agree_region_laws.lower() in ("true", "1", "yes")
 
+        # Resolve local doc name to Frappe Cloud bench ID
+        doc = frappe.get_doc("Go1 FCloud Bench", group)
+        bench_id = doc.id or doc.bench
+
         # Verify bench is active
-        bench = unwrap(cloud_post("press.api.bench.get", {"name": group}))
+        bench = unwrap(cloud_post("press.api.bench.get", {"name": bench_id}))
         if not bench:
             return _err("Release Group not found on Frappe Cloud.")
         if bench.get("status") != "Active":
@@ -419,7 +423,7 @@ def create_site(
             "name": site_name,
             "domain": domain,
             "apps": app_list,
-            "group": group,
+            "group": bench_id,
             "cluster": cluster,
             "plan": plan,
             "share_details_consent": share_details_consent,
