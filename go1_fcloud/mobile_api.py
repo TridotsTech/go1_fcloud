@@ -372,16 +372,25 @@ def check_domain(subdomain, domain="frappe.cloud"):
 
 
 @frappe.whitelist()
-def create_site(site_name, group, cluster, plan, apps=None):
+def create_site(
+    site_name, group, cluster, plan, apps=None, domain="frappe.cloud",
+    share_details_consent=False, agree_region_laws=False, provider=None
+):
     """
     Create a new Frappe Cloud site.
 
     Args:
-      site_name: subdomain (without .frappe.cloud)
-      group:     Release Group name
-      cluster:   cluster name
-      plan:      plan name
-      apps:      JSON list of app names e.g. '["erpnext"]'
+      site_name:              subdomain (without domain suffix)
+      group:                  Release Group name
+      cluster:                cluster name
+      plan:                   plan name
+      apps:                   JSON list of app names e.g. '["erpnext"]'
+      domain:                 Root domain (default "frappe.cloud", e.g. "m.frappe.cloud")
+      share_details_consent:  Boolean checkbox for sharing details consent
+      agree_region_laws:      Boolean checkbox for agreeing to region laws
+                              (e.g. "I agree that the laws of the region selected
+                              by me shall stand applicable to me and Frappe.")
+      provider:               Cloud provider (e.g. "aws", "oci")
     """
     try:
         _require_role()
@@ -390,6 +399,12 @@ def create_site(site_name, group, cluster, plan, apps=None):
             for a in json.loads(apps) if isinstance(apps, str) else apps:
                 if a not in app_list:
                     app_list.append(a)
+
+        # Parse booleans from string if needed
+        if isinstance(share_details_consent, str):
+            share_details_consent = share_details_consent.lower() in ("true", "1", "yes")
+        if isinstance(agree_region_laws, str):
+            agree_region_laws = agree_region_laws.lower() in ("true", "1", "yes")
 
         # Verify bench is active
         bench = unwrap(cloud_post("press.api.bench.get", {"name": group}))
@@ -400,18 +415,20 @@ def create_site(site_name, group, cluster, plan, apps=None):
                 f"Release Group is '{bench.get('status')}'. It must be Active to create a site."
             )
 
-        result = cloud_post(
-            "press.api.site.new",
-            {
-                "site": {
-                    "name": site_name,
-                    "apps": app_list,
-                    "group": group,
-                    "cluster": cluster,
-                    "plan": plan,
-                }
-            },
-        )
+        site_payload = {
+            "name": site_name,
+            "domain": domain,
+            "apps": app_list,
+            "group": group,
+            "cluster": cluster,
+            "plan": plan,
+            "share_details_consent": share_details_consent,
+            "agree_region_laws": agree_region_laws,
+        }
+        if provider:
+            site_payload["provider"] = provider
+
+        result = cloud_post("press.api.site.new", {"site": site_payload})
         return _ok(unwrap(result))
     except frappe.ValidationError as e:
         return _err(str(e))
