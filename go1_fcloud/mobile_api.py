@@ -298,6 +298,20 @@ def get_site_options(bench_name=None):
 
         plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
 
+        # Fetch domain info — options may not always include it
+        domain = options.get("domain", "")
+        cluster_domains = options.get("cluster_specific_root_domains", [])
+        if not domain:
+            domain = unwrap(cloud_get("press.api.site.get_domain")) or ""
+        if not cluster_domains and domain:
+            # Fetch without group to get cluster-specific root domains
+            base_options = (
+                unwrap(cloud_post("press.api.site.get_new_site_options")) or {}
+            )
+            cluster_domains = base_options.get(
+                "cluster_specific_root_domains", []
+            )
+
         # Extract unique providers and regions from plans for filters
         providers = set()
         regions = set()
@@ -314,10 +328,8 @@ def get_site_options(bench_name=None):
 
         return _ok(
             {
-                "domain": options.get("domain", ""),
-                "cluster_domains": options.get(
-                    "cluster_specific_root_domains", []
-                ),
+                "domain": domain,
+                "cluster_domains": cluster_domains,
                 "versions": options.get("versions", []),
                 "marketplace_apps": options.get("marketplace_apps", {}),
                 "plans": plans,
