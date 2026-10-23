@@ -410,11 +410,11 @@ def create_site(
     """
     try:
         _require_role()
-        app_list = []
+        requested_apps = []
         if apps:
             for a in json.loads(apps) if isinstance(apps, str) else apps:
-                if a != "frappe" and a not in app_list:
-                    app_list.append(a)
+                if a != "frappe" and a not in requested_apps:
+                    requested_apps.append(a)
 
         # Parse booleans from string if needed
         if isinstance(share_details_consent, str):
@@ -435,19 +435,56 @@ def create_site(
                 f"Release Group is '{bench.get('status')}'. It must be Active to create a site."
             )
 
+        # Fetch apps available on the bench to validate and get correct names
+        bench_apps = unwrap(
+            cloud_post("press.api.bench.apps", {"name": bench_id})
+        ) or []
+        bench_app_names = {a.get("name", ""): a for a in bench_apps}
+
+        # Only include apps that exist on the bench (skip frappe)
+        app_list = []
+        for app_name in requested_apps:
+            if app_name in bench_app_names:
+                app_list.append(app_name)
+            else:
+                # Try matching by title
+                matched = False
+                for ba in bench_apps:
+                    if ba.get("title", "").lower() == app_name.lower():
+                        app_list.append(ba.get("name", ""))
+                        matched = True
+                        break
+                if not matched:
+                    return _err(
+                        f"App '{app_name}' not found on this bench. "
+                        f"Available: {', '.join(bench_app_names.keys())}"
+                    )
+
+        # Resolve plan name — match by name or title from available plans
+        site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
+        resolved_plan = plan
+        for p in site_plans:
+            if p.get("name") == plan:
+                resolved_plan = plan
+                break
+            if p.get("plan_title") == plan or str(p.get("name", "")) in plan:
+                resolved_plan = p.get("name")
+                break
+
         site_payload = {
             "name": site_name,
             "domain": domain,
             "apps": app_list,
             "group": bench_id,
             "cluster": cluster,
-            "plan": plan,
+            "plan": resolved_plan,
             "share_details_consent": share_details_consent,
             "agree_region_laws": agree_region_laws,
         }
         if provider:
             site_payload["provider"] = provider
 
+        frappe.log_error("create_site:payload", json.dumps(site_payload, default=str))
         result = cloud_post("press.api.site.new", {"site": site_payload})
         return _ok(unwrap(result))
     except frappe.ValidationError as e:
