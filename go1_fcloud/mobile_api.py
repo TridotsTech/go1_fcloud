@@ -175,7 +175,7 @@ def get_sites(status_filter=None, search=None):
 @frappe.whitelist()
 def get_site(name):
     """
-    Return full details for a single site, including jobs and installed apps.
+    Return full details for a single site fetched live from Frappe Cloud.
 
     Args:
       name: Go1 FCloud Site doc name
@@ -183,33 +183,45 @@ def get_site(name):
     try:
         _require_role()
         doc = frappe.get_doc("Go1 FCloud Site", name)
-        apps = [{"app": a.title, "repo": a.app_name} for a in (doc.custom or [])]
-        jobs = [
+        cloud_name = doc.url or doc.site_name
+
+        # Fetch live site data from Frappe Cloud
+        site_data = unwrap(
+            cloud_post("press.api.site.get", {"name": cloud_name})
+        ) or {}
+
+        # Fetch installed apps live
+        site_apps = (
+            unwrap(
+                cloud_post("press.api.site.installed_apps", {"name": cloud_name})
+            )
+            or []
+        )
+        apps = [
             {
-                "type": j.title,
-                "status": j.status,
-                "created": str(j.creation),
-                "completed": j.completed,
-                "duration": j.duration,
+                "app": a.get("app", ""),
+                "title": a.get("title", ""),
+                "repository": a.get("repository", ""),
+                "branch": a.get("branch", ""),
             }
-            for j in (doc.jobs or [])
+            for a in site_apps
         ]
+
+        plan = site_data.get("plan") or {}
         return _ok(
             {
                 "name": doc.name,
-                "site_name": doc.site_name,
-                "url": doc.url,
-                "status": doc.status,
-                "bench_status": doc.bench_status,
-                "version": doc.version,
-                "region": doc.region,
-                "plan": doc.plan,
+                "site_name": cloud_name,
+                "status": site_data.get("status", doc.status),
+                "version": site_data.get("frappe_version", doc.version),
+                "region": site_data.get("cluster", doc.region),
+                "plan": plan.get("name", "") if isinstance(plan, dict) else plan,
+                "bench": site_data.get("group", doc.bench),
                 "bench_name": doc.bench_name,
-                "bench": doc.bench,
                 "project": doc.project,
                 "apps": apps,
-                "recent_jobs": jobs[:5],
-                "is_dropped": doc.is_dropped,
+                "setup_wizard_complete": site_data.get("setup_wizard_complete", False),
+                "creation": site_data.get("creation", ""),
             }
         )
     except Exception:
@@ -603,25 +615,51 @@ def poll_job(job_name):
 
 @frappe.whitelist()
 def get_benches(search=None):
-    """List all benches with summary info."""
+    """List all benches fetched live from Frappe Cloud."""
     try:
         _require_role()
-        benches = frappe.get_all(
+        cloud_benches = (
+            unwrap(
+                cloud_post(
+                    "press.api.bench.all",
+                    {"bench_filter": {"status": "All", "tag": ""}},
+                )
+            )
+            or []
+        )
+
+        # Build local doc lookup for linking local doc name
+        local_benches = frappe.get_all(
             "Go1 FCloud Bench",
             filters={"is_dropped": 0},
-            fields=[
-                "name",
-                "bench",
-                "status",
-                "version",
-                "region",
-                "server_id",
-                "project",
-            ],
+            fields=["name", "bench", "id", "project"],
         )
-        if search:
-            q = search.lower()
-            benches = [b for b in benches if q in (b.get("bench") or "").lower()]
+        local_by_id = {b["id"]: b for b in local_benches if b.get("id")}
+        local_by_title = {b["bench"]: b for b in local_benches if b.get("bench")}
+
+        benches = []
+        for b in cloud_benches:
+            bench_id = b.get("name", "")
+            title = b.get("title", "")
+
+            if search:
+                q = search.lower()
+                if q not in title.lower() and q not in bench_id.lower():
+                    continue
+
+            local = local_by_id.get(bench_id) or local_by_title.get(title) or {}
+
+            benches.append({
+                "name": local.get("name", ""),
+                "bench_id": bench_id,
+                "title": title,
+                "status": b.get("status", ""),
+                "version": b.get("version", ""),
+                "cluster": b.get("cluster", ""),
+                "project": local.get("project", ""),
+                "creation": b.get("creation", ""),
+            })
+
         return _ok(benches)
     except Exception:
         frappe.log_error("mobile_api.get_benches", frappe.get_traceback())

@@ -803,17 +803,20 @@ def sync_bench():
         bench_opts = unwrap(cloud_post("press.api.bench.options")) or {}
 
         local_benches = frappe.get_all(
-            "Go1 FCloud Bench", filters={"is_dropped": 0}, fields=["bench", "name"]
+            "Go1 FCloud Bench",
+            filters={"is_dropped": 0},
+            fields=["bench", "name", "id"],
         )
-        local_by_title = {b["bench"]: b["name"] for b in local_benches}
+        local_by_title = {b["bench"]: b["name"] for b in local_benches if b.get("bench")}
+        local_by_id = {b["id"]: b["name"] for b in local_benches if b.get("id")}
 
         for bench in cloud_benches:
             title = bench.get("title", "")
             bench_id = bench.get("name", "")
 
-            if title in local_by_title:
-                # Update status and key fields for existing benches
-                local_name = local_by_title[title]
+            # Match by cloud bench ID first, then by title
+            local_name = local_by_id.get(bench_id) or local_by_title.get(title)
+            if local_name:
                 doc = frappe.get_doc("Go1 FCloud Bench", local_name)
                 doc.status = bench.get("status", "")
                 doc.version = bench.get("version", "")
@@ -847,8 +850,9 @@ def sync_bench():
         # Mark local benches as dropped if deleted from Frappe Cloud
         if cloud_benches:
             cloud_titles = {b.get("title", "") for b in cloud_benches}
+            cloud_ids = {b.get("name", "") for b in cloud_benches}
             for local in local_benches:
-                if local["bench"] not in cloud_titles:
+                if local["bench"] not in cloud_titles and local.get("id") not in cloud_ids:
                     frappe.db.set_value(
                         "Go1 FCloud Bench", local["name"], "is_dropped", 1
                     )
