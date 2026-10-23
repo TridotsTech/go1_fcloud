@@ -410,10 +410,10 @@ def create_site(
     """
     try:
         _require_role()
-        app_list = ["frappe"]
+        app_list = []
         if apps:
             for a in json.loads(apps) if isinstance(apps, str) else apps:
-                if a not in app_list:
+                if a != "frappe" and a not in app_list:
                     app_list.append(a)
 
         # Parse booleans from string if needed
