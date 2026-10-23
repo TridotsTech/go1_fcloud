@@ -758,20 +758,31 @@ def create_bench(title, version, cluster, apps=None, server=None):
 
 
 @frappe.whitelist()
-def deploy_bench(name):
+def deploy_bench(name, apps=None, sites=None):
     """
     Deploy a bench that is in 'Awaiting Deploy' status.
 
-    Fetches deploy information to get the list of apps with pending
-    updates and triggers a deploy on Frappe Cloud.
+    Accepts optional apps and sites selections from the caller.
+    When sites are provided, uses deploy_and_update to also update
+    the selected sites after deployment.
 
     Args:
-      name:  Go1 FCloud Bench doc name
+      name:   Go1 FCloud Bench doc name
+      apps:   Optional list/JSON of selected apps to deploy.
+              If omitted, all apps with updates are deployed.
+      sites:  Optional list/JSON of selected site names to update
+              after deploy. If provided, deploy_and_update is used.
     """
     try:
         _require_role()
         doc = frappe.get_doc("Go1 FCloud Bench", name)
         bench_id = doc.id or doc.bench
+
+        # Parse JSON strings if passed from form data
+        if isinstance(apps, str):
+            apps = frappe.parse_json(apps)
+        if isinstance(sites, str):
+            sites = frappe.parse_json(sites)
 
         # Get deploy information (apps with pending updates)
         info = unwrap(
@@ -783,14 +794,27 @@ def deploy_bench(name):
         if info.get("deploy_in_progress"):
             return _err("A deploy is already in progress for this bench.")
 
-        apps = info.get("apps", [])
-        apps_to_deploy = [app for app in apps if app.get("update_available")]
+        # Use caller-provided apps or fall back to all apps with updates
+        if apps:
+            apps_to_deploy = apps
+        else:
+            all_apps = info.get("apps", [])
+            apps_to_deploy = [app for app in all_apps if app.get("update_available")]
+
         if not apps_to_deploy:
             return _err("No updates available to deploy.")
 
-        result = cloud_post(
-            "press.api.bench.deploy", {"name": bench_id, "apps": apps_to_deploy}
-        )
+        # If sites provided, use deploy_and_update to deploy + update sites
+        if sites:
+            result = cloud_post(
+                "press.api.bench.deploy_and_update",
+                {"name": bench_id, "apps": apps_to_deploy, "sites": sites},
+            )
+        else:
+            result = cloud_post(
+                "press.api.bench.deploy", {"name": bench_id, "apps": apps_to_deploy}
+            )
+
         candidate = unwrap(result)
         if candidate:
             return _ok({"candidate": candidate})
