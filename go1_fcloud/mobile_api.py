@@ -112,43 +112,53 @@ def dashboard():
 @frappe.whitelist()
 def get_sites(status_filter=None, search=None):
     """
-    List all non-dropped sites with summary fields.
+    List all sites fetched live from Frappe Cloud.
 
     Args:
       status_filter: "Active" | "Inactive" | "Updating" | None (all)
-      search:        substring search on site_name or url
+      search:        substring search on site name
     """
     try:
         _require_role()
-        filters = {"is_dropped": 0}
-        if status_filter:
-            filters["status"] = status_filter
+        cloud_sites = unwrap(cloud_post("press.api.site.all")) or []
 
-        sites = frappe.get_all(
+        # Build local doc lookup for linking local doc name
+        local_sites = frappe.get_all(
             "Go1 FCloud Site",
-            filters=filters,
-            fields=[
-                "name",
-                "site_name",
-                "url",
-                "status",
-                "bench_status",
-                "version",
-                "region",
-                "plan",
-                "bench_name",
-                "project",
-            ],
+            filters={"is_dropped": 0},
+            fields=["name", "url", "bench_name", "project"],
         )
+        local_by_url = {s["url"]: s for s in local_sites}
 
-        if search:
-            q = search.lower()
-            sites = [
-                s
-                for s in sites
-                if q in (s.get("site_name") or "").lower()
-                or q in (s.get("url") or "").lower()
-            ]
+        sites = []
+        for s in cloud_sites:
+            site_name = s.get("name", "")
+            status = s.get("status", "")
+
+            if status_filter and status != status_filter:
+                continue
+
+            if search:
+                q = search.lower()
+                if q not in site_name.lower() and q not in s.get("title", "").lower():
+                    continue
+
+            plan = s.get("plan") or {}
+            local = local_by_url.get(site_name, {})
+
+            sites.append({
+                "name": local.get("name", ""),
+                "site_name": site_name,
+                "title": s.get("title", ""),
+                "status": status,
+                "version": s.get("version", ""),
+                "region": s.get("cluster", ""),
+                "plan": plan.get("name", "") if isinstance(plan, dict) else plan,
+                "bench": s.get("group", ""),
+                "bench_name": local.get("bench_name", ""),
+                "project": local.get("project", ""),
+                "creation": s.get("creation", ""),
+            })
 
         return _ok(sites)
     except Exception:

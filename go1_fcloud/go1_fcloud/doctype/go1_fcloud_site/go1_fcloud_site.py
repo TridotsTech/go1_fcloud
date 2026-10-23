@@ -598,6 +598,7 @@ def sync_site():
                 # Update status and key fields for existing sites
                 local_name = local_by_url[site_name]
                 doc = frappe.get_doc("Go1 FCloud Site", local_name)
+                doc.site_name = site_name
                 doc.status = site.get("status", "")
                 doc.version = site.get("version", "")
                 doc.region = site.get("cluster", "")
@@ -611,8 +612,7 @@ def sync_site():
                 continue
 
             doc = frappe.new_doc("Go1 FCloud Site")
-            parts = site_name.partition(".")
-            doc.site_name = parts[0]
+            doc.site_name = site_name
             doc.status = site.get("status", "")
             doc.region = site.get("cluster", "")
             doc.version = site.get("version", "")
