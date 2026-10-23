@@ -413,7 +413,7 @@ def create_site(
         requested_apps = []
         if apps:
             for a in json.loads(apps) if isinstance(apps, str) else apps:
-                if a != "frappe" and a not in requested_apps:
+                if a not in requested_apps:
                     requested_apps.append(a)
 
         # Parse booleans from string if needed
@@ -459,6 +459,9 @@ def create_site(
                         f"App '{app_name}' not found on this bench. "
                         f"Available: {', '.join(bench_app_names.keys())}"
                     )
+
+        # frappe must be the first app in the list
+        app_list = ["frappe"] + [a for a in app_list if a != "frappe"]
 
         # Resolve plan name — match by name or title from available plans
         site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
