@@ -314,6 +314,10 @@ def get_site_options(bench_name=None):
 
         return _ok(
             {
+                "domain": options.get("domain", ""),
+                "cluster_domains": options.get(
+                    "cluster_specific_root_domains", []
+                ),
                 "versions": options.get("versions", []),
                 "marketplace_apps": options.get("marketplace_apps", {}),
                 "plans": plans,
@@ -326,6 +330,33 @@ def get_site_options(bench_name=None):
     except Exception:
         frappe.log_error("mobile_api.get_site_options", frappe.get_traceback())
         return _err("Failed to fetch site creation options.")
+
+
+@frappe.whitelist()
+def check_domain(subdomain, domain="frappe.cloud"):
+    """
+    Check whether a subdomain is available on Frappe Cloud.
+
+    Calls press.api.site.exists to verify if the domain is already taken.
+
+    Args:
+      subdomain:  The subdomain to check (e.g. "kassss")
+      domain:     The domain to check against (default "frappe.cloud")
+    """
+    try:
+        _require_role()
+        if not subdomain:
+            return _err("Subdomain is required.")
+        result = cloud_post(
+            "press.api.site.exists", {"domain": domain, "subdomain": subdomain}
+        )
+        exists = unwrap(result)
+        return _ok({"subdomain": subdomain, "domain": domain, "exists": exists})
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.check_domain", frappe.get_traceback())
+        return _err("Failed to check domain availability.")
 
 
 @frappe.whitelist()
