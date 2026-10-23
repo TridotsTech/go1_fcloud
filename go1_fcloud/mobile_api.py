@@ -41,6 +41,12 @@ def _err(msg):
     return {"success": False, "error": msg}
 
 
+def _resolve_site(name):
+    """Resolve a local Go1 FCloud Site doc name to the Frappe Cloud site URL."""
+    doc = frappe.get_doc("Go1 FCloud Site", name)
+    return doc.url or doc.site_name
+
+
 # =========================================================================== #
 #  DASHBOARD
 # =========================================================================== #
@@ -453,13 +459,16 @@ def create_site(
 
 @frappe.whitelist()
 def install_app(site_name, app):
-    """Install an app on a site (site_name = cloud URL like 'xxx.frappe.cloud')."""
+    """Install an app on a site. site_name = Go1 FCloud Site doc name."""
     try:
         _require_role()
+        cloud_name = _resolve_site(site_name)
         result = cloud_post(
-            "press.api.site.install_app", {"name": site_name, "app": app}
+            "press.api.site.install_app", {"name": cloud_name, "app": app}
         )
         return _ok(unwrap(result))
+    except frappe.ValidationError as e:
+        return _err(str(e))
     except Exception:
         frappe.log_error("mobile_api.install_app", frappe.get_traceback())
         return _err("Failed to install app.")
@@ -467,13 +476,16 @@ def install_app(site_name, app):
 
 @frappe.whitelist()
 def uninstall_app(site_name, app):
-    """Uninstall an app from a site."""
+    """Uninstall an app from a site. site_name = Go1 FCloud Site doc name."""
     try:
         _require_role()
+        cloud_name = _resolve_site(site_name)
         result = cloud_post(
-            "press.api.site.uninstall_app", {"name": site_name, "app": app}
+            "press.api.site.uninstall_app", {"name": cloud_name, "app": app}
         )
         return _ok(unwrap(result))
+    except frappe.ValidationError as e:
+        return _err(str(e))
     except Exception:
         frappe.log_error("mobile_api.uninstall_app", frappe.get_traceback())
         return _err("Failed to uninstall app.")
@@ -481,11 +493,14 @@ def uninstall_app(site_name, app):
 
 @frappe.whitelist()
 def site_login(site_name):
-    """Get a one-time admin login URL for the site."""
+    """Get a one-time admin login URL for the site. site_name = Go1 FCloud Site doc name."""
     try:
         _require_role()
-        result = unwrap(cloud_post("press.api.site.login", {"name": site_name}))
+        cloud_name = _resolve_site(site_name)
+        result = unwrap(cloud_post("press.api.site.login", {"name": cloud_name}))
         return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
     except Exception:
         frappe.log_error("mobile_api.site_login", frappe.get_traceback())
         return _err("Failed to generate login URL.")
@@ -495,19 +510,20 @@ def site_login(site_name):
 def get_site_jobs(site_name):
     """
     Return running and recent jobs for a site.
-    CHANGE: uses running_jobs + activities (replaces old press.api.site.jobs).
+    site_name = Go1 FCloud Site doc name.
     """
     try:
         _require_role()
+        cloud_name = _resolve_site(site_name)
         running = (
-            unwrap(cloud_post("press.api.site.running_jobs", {"name": site_name})) or []
+            unwrap(cloud_post("press.api.site.running_jobs", {"name": cloud_name})) or []
         )
         activities = (
             unwrap(
                 cloud_post(
                     "press.api.site.activities",
                     {
-                        "filters": {"site": site_name},
+                        "filters": {"site": cloud_name},
                         "order_by": "creation desc",
                         "limit_page_length": 10,
                     },
@@ -516,6 +532,8 @@ def get_site_jobs(site_name):
             or []
         )
         return _ok({"running": running, "recent": activities})
+    except frappe.ValidationError as e:
+        return _err(str(e))
     except Exception:
         frappe.log_error("mobile_api.get_site_jobs", frappe.get_traceback())
         return _err("Failed to fetch site jobs.")
