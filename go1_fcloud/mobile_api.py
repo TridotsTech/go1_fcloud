@@ -1122,23 +1122,39 @@ def get_bench_deploy_candidate(candidate_name):
 
 @frappe.whitelist()
 def get_servers():
-    """List all servers."""
+    """List all servers fetched live from Frappe Cloud."""
     try:
         _require_role()
-        servers = frappe.get_all(
+        cloud_servers = unwrap(cloud_get("press.api.server.all")) or []
+
+        # Build local doc lookup
+        local_servers = frappe.get_all(
             "Go1 FCloud Server",
-            fields=[
-                "name",
-                "server_name",
-                "server_id",
-                "status",
-                "region",
-                "vcpu",
-                "memory",
-                "disk",
-                "price",
-            ],
+            fields=["name", "server_name", "server_id"],
         )
+        local_by_id = {s["server_id"]: s for s in local_servers if s.get("server_id")}
+        local_by_name = {s["server_name"]: s for s in local_servers if s.get("server_name")}
+
+        servers = []
+        for s in cloud_servers:
+            server_id = s.get("name", "")
+            title = s.get("title", "")
+            plan = s.get("plan") or {}
+            local = local_by_id.get(server_id) or local_by_name.get(title) or {}
+
+            servers.append({
+                "name": local.get("name", ""),
+                "server_id": server_id,
+                "server_name": title,
+                "status": s.get("status", ""),
+                "region": s.get("cluster", ""),
+                "vcpu": plan.get("vcpu", ""),
+                "memory": plan.get("memory", ""),
+                "disk": plan.get("disk", ""),
+                "price": plan.get("price_inr", ""),
+                "creation": s.get("creation", ""),
+            })
+
         return _ok(servers)
     except Exception:
         frappe.log_error("mobile_api.get_servers", frappe.get_traceback())
@@ -1147,21 +1163,30 @@ def get_servers():
 
 @frappe.whitelist()
 def get_server(name):
-    """Return details for a specific server."""
+    """Return full details for a server fetched live from Frappe Cloud."""
     try:
         _require_role()
         doc = frappe.get_doc("Go1 FCloud Server", name)
+        server_id = doc.server_id or doc.server_name
+
+        # Fetch live from Frappe Cloud
+        server_data = unwrap(
+            cloud_post("press.api.server.get", {"name": server_id})
+        ) or {}
+
+        plan = server_data.get("plan") or {}
         return _ok(
             {
                 "name": doc.name,
-                "server_name": doc.server_name,
-                "server_id": doc.server_id,
-                "status": doc.status,
-                "region": doc.region,
-                "vcpu": doc.vcpu,
-                "memory": doc.memory,
-                "disk": doc.disk,
-                "price": doc.price,
+                "server_id": server_id,
+                "server_name": server_data.get("title", doc.server_name),
+                "status": server_data.get("status", doc.status),
+                "region": server_data.get("cluster", doc.region),
+                "vcpu": plan.get("vcpu", doc.vcpu),
+                "memory": plan.get("memory", doc.memory),
+                "disk": plan.get("disk", doc.disk),
+                "price": plan.get("price_inr", doc.price),
+                "creation": server_data.get("creation", ""),
             }
         )
     except Exception:
