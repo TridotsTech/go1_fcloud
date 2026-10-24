@@ -206,6 +206,7 @@ def get_sites(status_filter=None, search=None):
                 "bench_name": local.get("bench_name", ""),
                 "project": local.get("project", ""),
                 "creation": s.get("creation", ""),
+                "app_count": s.get("app_count", 0),
             })
 
         return _ok({
@@ -726,6 +727,62 @@ def poll_job(job_name):
     except Exception:
         frappe.log_error("mobile_api.poll_job", frappe.get_traceback())
         return _err("Failed to poll job status.")
+
+
+@frappe.whitelist()
+def site_add_custom_domain(site_name, domain):
+    """
+    Add a custom domain to a site on Frappe Cloud.
+
+    Args:
+      site_name:  Go1 FCloud Site doc name or Frappe Cloud site name
+      domain:     The custom domain to add (e.g. "app.example.com")
+    """
+    try:
+        _require_role()
+        if not domain:
+            return _err("Domain is required.")
+        cloud_name = _resolve_site(site_name)
+        result = unwrap(
+            cloud_post(
+                "press.api.site.add_domain",
+                {"name": cloud_name, "domain": domain},
+            )
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.site_add_custom_domain", frappe.get_traceback())
+        return _err("Failed to add custom domain.")
+
+
+@frappe.whitelist()
+def site_verify_dns(site_name, domain):
+    """
+    Verify DNS configuration for a custom domain on a site.
+
+    Args:
+      site_name:  Go1 FCloud Site doc name or Frappe Cloud site name
+      domain:     The custom domain to verify DNS for (e.g. "app.example.com")
+    """
+    try:
+        _require_role()
+        if not domain:
+            return _err("Domain is required.")
+        cloud_name = _resolve_site(site_name)
+        result = unwrap(
+            cloud_post(
+                "press.api.site.verify_custom_domain",
+                {"name": cloud_name, "domain": domain},
+            )
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.site_verify_dns", frappe.get_traceback())
+        return _err("Failed to verify DNS.")
 
 
 # =========================================================================== #
