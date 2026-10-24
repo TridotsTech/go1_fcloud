@@ -1108,7 +1108,7 @@ def get_bench_deploys(name):
             unwrap(
                 cloud_post(
                     "press.api.bench.candidates",
-                    {"filters": {"group": bench_id}},
+                    {"name": bench_id, "filters": {"group": bench_id}},
                 )
             )
             or {}
