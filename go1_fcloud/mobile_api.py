@@ -1096,24 +1096,50 @@ def get_bench_deploy_info(name):
 @frappe.whitelist()
 def get_bench_deploys(name):
     """
-    Return deploy history (candidates) for a bench.
+    Return deploy history for a bench using versions and deploy_information.
 
     Args:
-      name:  Go1 FCloud Bench doc name
+      name:  Go1 FCloud Bench doc name or Frappe Cloud bench ID
     """
     try:
         _require_role()
         doc, bench_id = _resolve_bench(name)
-        deploys = (
+
+        # Fetch deployed versions (each version is a deploy)
+        versions = (
             unwrap(
-                cloud_post(
-                    "press.api.bench.recent_deploys",
-                    {"name": bench_id},
-                )
+                cloud_post("press.api.bench.versions", {"name": bench_id})
             )
             or []
         )
-        return _ok(deploys)
+
+        # Fetch current deploy information
+        deploy_info = (
+            unwrap(
+                cloud_post(
+                    "press.api.bench.deploy_information", {"name": bench_id}
+                )
+            )
+            or {}
+        )
+
+        deploys = []
+        for v in versions:
+            deploys.append({
+                "name": v.get("name", ""),
+                "status": v.get("status", ""),
+                "creation": v.get("creation", ""),
+                "apps": v.get("apps", []),
+                "sites": v.get("sites", []),
+            })
+
+        return _ok({
+            "deploys": deploys,
+            "deploy_in_progress": deploy_info.get("deploy_in_progress", False),
+            "update_available": any(
+                a.get("update_available") for a in deploy_info.get("apps", [])
+            ),
+        })
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
