@@ -143,10 +143,11 @@ def dashboard():
 @frappe.whitelist()
 def get_sites(status_filter=None, search=None):
     """
-    List all sites fetched live from Frappe Cloud.
+    List all sites fetched live from Frappe Cloud with status counts.
 
     Args:
-      status_filter: "Active" | "Inactive" | "Updating" | None (all)
+      status_filter: "Active" | "Inactive" | "Suspended" | "Broken" | "Attention" | None (all)
+                     "Attention" matches both Broken and Suspended sites.
       search:        substring search on site name
     """
     try:
@@ -161,13 +162,29 @@ def get_sites(status_filter=None, search=None):
         )
         local_by_url = {s["url"]: s for s in local_sites}
 
+        # Count statuses across all sites (before filtering)
+        attention_statuses = {"Broken", "Suspended"}
+        status_counts = {}
+        for s in cloud_sites:
+            st = s.get("status", "")
+            status_counts[st] = status_counts.get(st, 0) + 1
+
+        total = len(cloud_sites)
+        active_count = status_counts.get("Active", 0)
+        attention_count = sum(status_counts.get(s, 0) for s in attention_statuses)
+
         sites = []
         for s in cloud_sites:
             site_name = s.get("name", "")
             status = s.get("status", "")
 
-            if status_filter and status != status_filter:
-                continue
+            # Filter by status
+            if status_filter:
+                if status_filter == "Attention":
+                    if status not in attention_statuses:
+                        continue
+                elif status != status_filter:
+                    continue
 
             if search:
                 q = search.lower()
@@ -191,7 +208,22 @@ def get_sites(status_filter=None, search=None):
                 "creation": s.get("creation", ""),
             })
 
-        return _ok(sites)
+        return _ok({
+            "site_count": {
+                "total": total,
+                "active": active_count,
+                "attention": attention_count,
+            },
+            "status_list": [
+                {"status": "All", "count": total},
+                {"status": "Active", "count": active_count},
+                {"status": "Attention", "count": attention_count},
+                {"status": "Inactive", "count": status_counts.get("Inactive", 0)},
+                {"status": "Suspended", "count": status_counts.get("Suspended", 0)},
+                {"status": "Broken", "count": status_counts.get("Broken", 0)},
+            ],
+            "sites": sites,
+        })
     except Exception:
         frappe.log_error("mobile_api.get_sites", frappe.get_traceback())
         return _err("Failed to fetch sites.")
@@ -358,6 +390,22 @@ def get_site_options(bench_name=None):
         domain = site_opts.get("domain", "")
         cluster_domains = site_opts.get("cluster_specific_root_domains", [])
 
+        # Build cluster image map from options_for_new (has image field)
+        opts_clusters = site_opts.get("clusters", [])
+        cluster_image_map = {}
+        for c in opts_clusters:
+            if c.get("name") and c.get("image"):
+                cluster_image_map[c["name"]] = c["image"]
+
+        # Enrich version clusters with image from options_for_new
+        versions = options.get("versions", [])
+        for v in versions:
+            group = v.get("group") or {}
+            for cl in group.get("clusters", []):
+                cl_name = cl.get("name", "")
+                if cl_name and cl_name in cluster_image_map and not cl.get("image"):
+                    cl["image"] = cluster_image_map[cl_name]
+
         # Extract unique providers and regions from plans for filters
         providers = set()
         regions = set()
@@ -367,7 +415,7 @@ def get_site_options(bench_name=None):
             for cl in p.get("clusters", []):
                 regions.add(cl)
         # Also collect regions from version clusters
-        for v in options.get("versions", []):
+        for v in versions:
             group = v.get("group") or {}
             for cl in group.get("clusters", []):
                 regions.add(cl.get("name", ""))
@@ -376,7 +424,8 @@ def get_site_options(bench_name=None):
             {
                 "domain": domain,
                 "cluster_domains": cluster_domains,
-                "versions": options.get("versions", []),
+                "clusters": opts_clusters,
+                "versions": versions,
                 "marketplace_apps": options.get("marketplace_apps", {}),
                 "plans": plans,
                 "filters": {
@@ -648,8 +697,14 @@ def poll_job(job_name):
 
 
 @frappe.whitelist()
-def get_benches(search=None):
-    """List all benches fetched live from Frappe Cloud."""
+def get_benches(status_filter=None, search=None):
+    """
+    List all benches fetched live from Frappe Cloud with status counts.
+
+    Args:
+      status_filter: "Active" | "Awaiting Deploy" | "Update Available" | None (all)
+      search:        substring search on bench title or id
+    """
     try:
         _require_role()
         cloud_benches = (
@@ -671,10 +726,25 @@ def get_benches(search=None):
         local_by_id = {b["id"]: b for b in local_benches if b.get("id")}
         local_by_title = {b["bench"]: b for b in local_benches if b.get("bench")}
 
+        # Count statuses across all benches (before filtering)
+        status_counts = {}
+        for b in cloud_benches:
+            st = b.get("status", "")
+            status_counts[st] = status_counts.get(st, 0) + 1
+
+        total = len(cloud_benches)
+        active_count = status_counts.get("Active", 0)
+        awaiting_deploy_count = status_counts.get("Awaiting Deploy", 0)
+        update_available_count = status_counts.get("Update Available", 0)
+
         benches = []
         for b in cloud_benches:
             bench_id = b.get("name", "")
             title = b.get("title", "")
+            status = b.get("status", "")
+
+            if status_filter and status != status_filter:
+                continue
 
             if search:
                 q = search.lower()
@@ -687,14 +757,28 @@ def get_benches(search=None):
                 "name": local.get("name", ""),
                 "bench_id": bench_id,
                 "title": title,
-                "status": b.get("status", ""),
+                "status": status,
                 "version": b.get("version", ""),
                 "cluster": b.get("cluster", ""),
                 "project": local.get("project", ""),
                 "creation": b.get("creation", ""),
             })
 
-        return _ok(benches)
+        return _ok({
+            "bench_count": {
+                "total": total,
+                "active": active_count,
+                "awaiting_deploy": awaiting_deploy_count,
+                "update_available": update_available_count,
+            },
+            "status_list": [
+                {"status": "All", "count": total},
+                {"status": "Active", "count": active_count},
+                {"status": "Awaiting Deploy", "count": awaiting_deploy_count},
+                {"status": "Update Available", "count": update_available_count},
+            ],
+            "benches": benches,
+        })
     except Exception:
         frappe.log_error("mobile_api.get_benches", frappe.get_traceback())
         return _err("Failed to fetch benches.")
