@@ -390,47 +390,84 @@ def get_site_options(bench_name=None):
         domain = site_opts.get("domain", "")
         cluster_domains = site_opts.get("cluster_specific_root_domains", [])
 
-        # Build cluster image map from options_for_new (has image field)
+        # Build cluster detail map from options_for_new (has image, title)
         opts_clusters = site_opts.get("clusters", [])
-        cluster_image_map = {}
+        cluster_detail_map = {}
         for c in opts_clusters:
-            if c.get("name") and c.get("image"):
-                cluster_image_map[c["name"]] = c["image"]
+            c_name = c.get("name", "")
+            if c_name:
+                cluster_detail_map[c_name] = {
+                    "name": c_name,
+                    "title": c.get("title", ""),
+                    "image": c.get("image", ""),
+                    "proxy_server": c.get("proxy_server", ""),
+                }
 
-        # Enrich version clusters with image from options_for_new
+        # Enrich version clusters with image/title from options_for_new
         versions = options.get("versions", [])
         for v in versions:
             group = v.get("group") or {}
             for cl in group.get("clusters", []):
                 cl_name = cl.get("name", "")
-                if cl_name and cl_name in cluster_image_map and not cl.get("image"):
-                    cl["image"] = cluster_image_map[cl_name]
+                detail = cluster_detail_map.get(cl_name)
+                if detail:
+                    if not cl.get("image"):
+                        cl["image"] = detail["image"]
+                    if not cl.get("title"):
+                        cl["title"] = detail["title"]
 
-        # Extract unique providers and regions from plans for filters
-        providers = set()
-        regions = set()
-        for p in plans:
-            for cp in p.get("cloud_providers", []):
-                providers.add(cp)
-            for cl in p.get("clusters", []):
-                regions.add(cl)
-        # Also collect regions from version clusters
+        # Collect unique region names from versions and plans
+        region_names = set()
         for v in versions:
             group = v.get("group") or {}
             for cl in group.get("clusters", []):
-                regions.add(cl.get("name", ""))
+                cl_name = cl.get("name", "")
+                if cl_name:
+                    region_names.add(cl_name)
+        for p in plans:
+            for cl in p.get("clusters", []):
+                if cl:
+                    region_names.add(cl)
+
+        # Build regions list with image and title from cluster details
+        regions = []
+        seen = set()
+        for c in opts_clusters:
+            c_name = c.get("name", "")
+            if c_name and c_name not in seen:
+                seen.add(c_name)
+                regions.append({
+                    "name": c_name,
+                    "title": c.get("title", ""),
+                    "image": c.get("image", ""),
+                })
+        # Add any region from versions/plans not already in opts_clusters
+        for r_name in sorted(region_names):
+            if r_name not in seen:
+                seen.add(r_name)
+                detail = cluster_detail_map.get(r_name, {})
+                regions.append({
+                    "name": r_name,
+                    "title": detail.get("title", r_name),
+                    "image": detail.get("image", ""),
+                })
+
+        # Extract unique providers from plans
+        providers = set()
+        for p in plans:
+            for cp in p.get("cloud_providers", []):
+                providers.add(cp)
 
         return _ok(
             {
                 "domain": domain,
                 "cluster_domains": cluster_domains,
-                "clusters": opts_clusters,
+                "regions": regions,
                 "versions": versions,
                 "marketplace_apps": options.get("marketplace_apps", {}),
                 "plans": plans,
                 "filters": {
                     "providers": sorted(providers),
-                    "regions": sorted(r for r in regions if r),
                 },
             }
         )
