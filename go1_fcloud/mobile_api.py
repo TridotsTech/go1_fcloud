@@ -42,9 +42,27 @@ def _err(msg):
 
 
 def _resolve_site(name):
-    """Resolve a local Go1 FCloud Site doc name to the Frappe Cloud site URL."""
-    doc = frappe.get_doc("Go1 FCloud Site", name)
-    return doc.url or doc.site_name
+    """Resolve a site name (local doc name or cloud site name) to the Frappe Cloud site URL.
+
+    Accepts:
+      - Local Go1 FCloud Site doc name
+      - Frappe Cloud site name (e.g. "mysite.frappe.cloud")
+    """
+    if frappe.db.exists("Go1 FCloud Site", name):
+        doc = frappe.get_doc("Go1 FCloud Site", name)
+        return doc.url or doc.site_name
+    # Try by cloud URL
+    local_name = frappe.db.get_value("Go1 FCloud Site", {"url": name}, "name")
+    if local_name:
+        doc = frappe.get_doc("Go1 FCloud Site", local_name)
+        return doc.url or doc.site_name
+    # Try by site_name field
+    local_name = frappe.db.get_value("Go1 FCloud Site", {"site_name": name}, "name")
+    if local_name:
+        doc = frappe.get_doc("Go1 FCloud Site", local_name)
+        return doc.url or doc.site_name
+    # Not found locally — use the name directly as cloud site name
+    return name
 
 
 def _resolve_bench(name):
@@ -236,12 +254,24 @@ def get_site(name):
     Return full details for a single site fetched live from Frappe Cloud.
 
     Args:
-      name: Go1 FCloud Site doc name
+      name: Go1 FCloud Site doc name or Frappe Cloud site name
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Site", name)
-        cloud_name = doc.url or doc.site_name
+        cloud_name = _resolve_site(name)
+
+        # Try to load local doc for extra fields
+        doc = None
+        if frappe.db.exists("Go1 FCloud Site", name):
+            doc = frappe.get_doc("Go1 FCloud Site", name)
+        else:
+            local_name = frappe.db.get_value(
+                "Go1 FCloud Site", {"url": cloud_name}, "name"
+            ) or frappe.db.get_value(
+                "Go1 FCloud Site", {"site_name": cloud_name}, "name"
+            )
+            if local_name:
+                doc = frappe.get_doc("Go1 FCloud Site", local_name)
 
         # Fetch live site data from Frappe Cloud
         site_data = unwrap(
@@ -268,20 +298,22 @@ def get_site(name):
         plan = site_data.get("plan") or {}
         return _ok(
             {
-                "name": doc.name,
+                "name": doc.name if doc else "",
                 "site_name": cloud_name,
-                "status": site_data.get("status", doc.status),
-                "version": site_data.get("frappe_version", doc.version),
-                "region": site_data.get("cluster", doc.region),
+                "status": site_data.get("status", doc.status if doc else ""),
+                "version": site_data.get("frappe_version", doc.version if doc else ""),
+                "region": site_data.get("cluster", doc.region if doc else ""),
                 "plan": plan.get("name", "") if isinstance(plan, dict) else plan,
-                "bench": site_data.get("group", doc.bench),
-                "bench_name": doc.bench_name,
-                "project": doc.project,
+                "bench": site_data.get("group", doc.bench if doc else ""),
+                "bench_name": doc.bench_name if doc else "",
+                "project": doc.project if doc else "",
                 "apps": apps,
                 "setup_wizard_complete": site_data.get("setup_wizard_complete", False),
                 "creation": site_data.get("creation", ""),
             }
         )
+    except frappe.ValidationError as e:
+        return _err(str(e))
     except Exception:
         frappe.log_error("mobile_api.get_site", frappe.get_traceback())
         return _err(f"Failed to fetch site: {name}")
