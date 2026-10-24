@@ -561,12 +561,29 @@ def uninstall_app(site_name, app):
 
 
 @frappe.whitelist()
-def site_login(site_name):
-    """Get a one-time admin login URL for the site. site_name = Go1 FCloud Site doc name."""
+def site_login(site_name, reason=None):
+    """
+    Login as Administrator on a site. Returns a one-time login URL.
+
+    Args:
+      site_name:  Go1 FCloud Site doc name or Frappe Cloud site name
+      reason:     Optional reason for the login
+    """
     try:
         _require_role()
         cloud_name = _resolve_site(site_name)
-        result = unwrap(cloud_post("press.api.site.login", {"name": cloud_name}))
+        params = {"name": cloud_name}
+        if reason:
+            params["reason"] = reason
+        result = unwrap(cloud_post("press.api.site.login", params))
+        if result and result.get("sid"):
+            site = result.get("site", cloud_name)
+            login_url = f"https://{site}/api/method/login?sid={result['sid']}"
+            return _ok({
+                "sid": result["sid"],
+                "site": site,
+                "login_url": login_url,
+            })
         return _ok(result)
     except frappe.ValidationError as e:
         return _err(str(e))
