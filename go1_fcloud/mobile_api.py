@@ -47,6 +47,31 @@ def _resolve_site(name):
     return doc.url or doc.site_name
 
 
+def _resolve_bench(name):
+    """Resolve a bench name (local doc name or cloud ID) to (doc, bench_id).
+
+    Accepts:
+      - Local Go1 FCloud Bench doc name (e.g. "kjro56udmf")
+      - Frappe Cloud bench ID (e.g. "bench-50438")
+    """
+    # Try local doc name first
+    if frappe.db.exists("Go1 FCloud Bench", name):
+        doc = frappe.get_doc("Go1 FCloud Bench", name)
+        return doc, doc.id or doc.bench
+    # Try by cloud bench ID
+    local_name = frappe.db.get_value("Go1 FCloud Bench", {"id": name}, "name")
+    if local_name:
+        doc = frappe.get_doc("Go1 FCloud Bench", local_name)
+        return doc, doc.id or doc.bench
+    # Try by bench title
+    local_name = frappe.db.get_value("Go1 FCloud Bench", {"bench": name}, "name")
+    if local_name:
+        doc = frappe.get_doc("Go1 FCloud Bench", local_name)
+        return doc, doc.id or doc.bench
+    # Not found locally — use the name directly as cloud bench ID
+    return None, name
+
+
 # =========================================================================== #
 #  DASHBOARD
 # =========================================================================== #
@@ -435,8 +460,7 @@ def create_site(
             agree_region_laws = agree_region_laws.lower() in ("true", "1", "yes")
 
         # Resolve local doc name to Frappe Cloud bench ID
-        doc = frappe.get_doc("Go1 FCloud Bench", group)
-        bench_id = doc.id or doc.bench
+        _, bench_id = _resolve_bench(group)
 
         # Verify bench is active
         bench = unwrap(cloud_post("press.api.bench.get", {"name": bench_id}))
@@ -671,8 +695,7 @@ def get_bench(name):
     """Return full bench details including apps and recent deploys."""
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Bench", name)
-        bench_id = doc.id or doc.bench
+        doc, bench_id = _resolve_bench(name)
         # Fetch apps live from Frappe Cloud
         cloud_apps = (
             unwrap(cloud_post("press.api.bench.apps", {"name": bench_id})) or []
@@ -744,8 +767,7 @@ def bench_action(name, action, extra=None):
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Bench", name)
-        bench_id = doc.id or doc.bench  # Release Group internal ID
+        doc, bench_id = _resolve_bench(name)
 
         if action == "restart":
             # Restart needs bench *version* ID, not Release Group ID
@@ -776,8 +798,9 @@ def bench_action(name, action, extra=None):
 
         elif action == "archive":
             result = cloud_post("press.api.bench.archive", {"name": bench_id})
-            doc.is_dropped = 1
-            doc.save(ignore_permissions=True)
+            if doc:
+                doc.is_dropped = 1
+                doc.save(ignore_permissions=True)
             return _ok(unwrap(result))
 
         elif action == "deploy_check":
@@ -840,8 +863,7 @@ def get_bench_jobs(name):
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Bench", name)
-        bench_id = doc.id or doc.bench
+        doc, bench_id = _resolve_bench(name)
         running = (
             unwrap(cloud_post("press.api.bench.running_jobs", {"name": bench_id}))
             or []
@@ -958,8 +980,7 @@ def deploy_bench(name, apps=None, sites=None):
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Bench", name)
-        bench_id = doc.id or doc.bench
+        doc, bench_id = _resolve_bench(name)
 
         # Parse JSON strings if passed from form data
         if isinstance(apps, str):
@@ -1020,8 +1041,7 @@ def get_bench_deploy_info(name):
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Bench", name)
-        bench_id = doc.id or doc.bench
+        doc, bench_id = _resolve_bench(name)
 
         info = (
             unwrap(
@@ -1083,8 +1103,7 @@ def get_bench_deploys(name):
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Bench", name)
-        bench_id = doc.id or doc.bench
+        doc, bench_id = _resolve_bench(name)
         candidates = (
             unwrap(
                 cloud_post(
