@@ -1195,6 +1195,62 @@ def get_server(name):
 
 
 @frappe.whitelist()
+def server_action(name, action, extra=None):
+    """
+    Perform an action on a server.
+
+    Args:
+      name:   Go1 FCloud Server doc name
+      action: reboot | archive | rename | change_plan
+      extra:  JSON string with optional params
+              rename: {"title": "new-name"}
+              change_plan: {"plan": "plan-name"}
+    """
+    try:
+        _require_role()
+        doc = frappe.get_doc("Go1 FCloud Server", name)
+        server_id = doc.server_id or doc.server_name
+        if not server_id:
+            return _err("Server ID not set.")
+
+        params = json.loads(extra) if extra else {}
+
+        action_map = {
+            "reboot": ("press.api.server.reboot", {"name": server_id}),
+            "archive": ("press.api.server.archive", {"name": server_id}),
+            "rename": (
+                "press.api.server.rename",
+                {"name": server_id, "title": params.get("title", "")},
+            ),
+            "change_plan": (
+                "press.api.server.change_plan",
+                {"name": server_id, "plan": params.get("plan", "")},
+            ),
+        }
+
+        if action not in action_map:
+            return _err(f"Unknown action: {action}. Valid: {', '.join(action_map)}")
+
+        endpoint, payload = action_map[action]
+        result = cloud_post(endpoint, payload)
+
+        # Post-action local state update
+        if action == "archive":
+            doc.status = "Deleted"
+            doc.save(ignore_permissions=True)
+        elif action == "rename" and params.get("title"):
+            doc.server_name = params["title"]
+            doc.save(ignore_permissions=True)
+
+        return _ok({"action": action, "result": unwrap(result)})
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.server_action", frappe.get_traceback())
+        return _err(f"Action '{action}' failed.")
+
+
+@frappe.whitelist()
 def get_server_options():
     """
     Return options for creating a new server:
