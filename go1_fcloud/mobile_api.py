@@ -1398,15 +1398,23 @@ def get_servers():
             plan = s.get("plan") or {}
             local = local_by_id.get(server_id) or local_by_name.get(title) or {}
 
+            vcpu = plan.get("vcpu", 0)
+            memory = plan.get("memory", 0)
+            disk = plan.get("disk", 0)
+
             servers.append({
                 "name": local.get("name", ""),
                 "server_id": server_id,
                 "server_name": title,
                 "status": s.get("status", ""),
                 "region": s.get("cluster", ""),
-                "vcpu": plan.get("vcpu", ""),
-                "memory": plan.get("memory", ""),
-                "disk": plan.get("disk", ""),
+                "image": s.get("cluster_image", "") or s.get("image", ""),
+                "vcpu": vcpu,
+                "memory": memory,
+                "disk": disk,
+                "vcpu_display": f"{vcpu} vCPU" if vcpu else "",
+                "memory_display": f"{memory} GB RAM" if memory else "",
+                "disk_display": f"{disk} GB Disk" if disk else "",
                 "price": plan.get("price_inr", ""),
                 "creation": s.get("creation", ""),
             })
