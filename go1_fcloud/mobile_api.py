@@ -1104,16 +1104,16 @@ def get_bench_deploys(name):
     try:
         _require_role()
         doc, bench_id = _resolve_bench(name)
-        candidates = (
+        deploys = (
             unwrap(
                 cloud_post(
-                    "press.api.bench.candidates",
-                    {"name": bench_id, "filters": {"group": bench_id}},
+                    "press.api.bench.recent_deploys",
+                    {"name": bench_id},
                 )
             )
-            or {}
+            or []
         )
-        return _ok(candidates)
+        return _ok(deploys)
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
