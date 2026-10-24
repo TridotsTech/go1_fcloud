@@ -351,19 +351,12 @@ def get_site_options(bench_name=None):
 
         plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
 
-        # Fetch domain info — options may not always include it
-        domain = options.get("domain", "")
-        cluster_domains = options.get("cluster_specific_root_domains", [])
-        if not domain:
-            domain = unwrap(cloud_get("press.api.site.get_domain")) or ""
-        if not cluster_domains and domain:
-            # Fetch without group to get cluster-specific root domains
-            base_options = (
-                unwrap(cloud_post("press.api.site.get_new_site_options")) or {}
-            )
-            cluster_domains = base_options.get(
-                "cluster_specific_root_domains", []
-            )
+        # Fetch domain and cluster info from options_for_new
+        site_opts = (
+            unwrap(cloud_get("press.api.site.options_for_new")) or {}
+        )
+        domain = site_opts.get("domain", "")
+        cluster_domains = site_opts.get("cluster_specific_root_domains", [])
 
         # Extract unique providers and regions from plans for filters
         providers = set()
