@@ -692,10 +692,16 @@ def get_benches(search=None):
 
 @frappe.whitelist()
 def get_bench(name):
-    """Return full bench details including apps and recent deploys."""
+    """Return full bench details fetched live from Frappe Cloud."""
     try:
         _require_role()
         doc, bench_id = _resolve_bench(name)
+
+        # Fetch bench info live from Frappe Cloud
+        bench_data = (
+            unwrap(cloud_post("press.api.bench.get", {"name": bench_id})) or {}
+        )
+
         # Fetch apps live from Frappe Cloud
         cloud_apps = (
             unwrap(cloud_post("press.api.bench.apps", {"name": bench_id})) or []
@@ -720,32 +726,33 @@ def get_bench(name):
         )
         update_available = deploy_info.get("update_available", False)
 
+        # Fetch deployed versions
+        versions = (
+            unwrap(cloud_post("press.api.bench.versions", {"name": bench_id}))
+            or []
+        )
         deploys = [
             {
-                "name": d.title,
-                "status": d.status,
-                "apps": d.apps,
-                "created": str(d.created_on),
-                "completed": d.completed,
-                "duration": d.duration,
+                "name": v.get("name", ""),
+                "status": v.get("status", ""),
+                "creation": v.get("creation", ""),
             }
-            for d in (doc.deploy or [])[:5]
+            for v in versions[:5]
         ]
-        sites = [{"url": s.sites} for s in (doc.linked_sites or [])]
+
         return _ok(
             {
-                "name": doc.name,
-                "bench": doc.bench,
-                "bench_id": doc.id,
-                "status": doc.status,
-                "version": doc.version,
-                "region": doc.region,
-                "server_id": doc.server_id,
-                "project": doc.project,
+                "name": doc.name if doc else "",
+                "bench": bench_data.get("title", doc.bench if doc else ""),
+                "bench_id": bench_id,
+                "status": bench_data.get("status", ""),
+                "version": bench_data.get("version", ""),
+                "region": bench_data.get("cluster", ""),
+                "creation": bench_data.get("creation", ""),
+                "project": doc.project if doc else "",
                 "update_available": update_available,
                 "apps": apps,
                 "recent_deploys": deploys,
-                "linked_sites": sites,
             }
         )
     except Exception:
