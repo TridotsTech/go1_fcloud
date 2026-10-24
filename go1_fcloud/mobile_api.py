@@ -856,6 +856,9 @@ def get_benches(status_filter=None, search=None):
                 "cluster": b.get("cluster", ""),
                 "project": local.get("project", ""),
                 "creation": b.get("creation", ""),
+                "app_count": b.get("number_of_apps", 0),
+                "site_count": b.get("number_of_sites", 0),
+                "last_deploy": b.get("last_deploy", ""),
             })
 
         return _ok({
