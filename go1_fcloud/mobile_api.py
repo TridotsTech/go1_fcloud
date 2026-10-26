@@ -625,7 +625,7 @@ def delete_site_config(name, key):
             return _err("Config key is required.")
 
         result = unwrap(
-            cloud_post("press.api.site.delete_config", {
+            cloud_post("press.api.site.delete_config_key", {
                 "name": cloud_name,
                 "key": key,
             })
