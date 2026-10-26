@@ -314,6 +314,16 @@ def get_site(name):
             plan = {"name": plan_data}
 
         domains = site_data.get("domains", [])
+        default_domain = site_data.get("host_name", cloud_name)
+
+        usage = {
+            "cpu": round(site_data.get("current_cpu_usage", 0), 2),
+            "cpu_limit": plan.get("cpu_time", 0),
+            "database": round(site_data.get("current_database_usage", 0) / 1024, 2) if site_data.get("current_database_usage") else 0,
+            "database_limit": round(plan.get("database_usage", 0) / 1024, 2) if plan.get("database_usage") else 0,
+            "disk": round(site_data.get("current_disk_usage", 0) / 1024, 2) if site_data.get("current_disk_usage") else 0,
+            "disk_limit": round(plan.get("disk", 0) / 1024, 2) if plan.get("disk") else 0,
+        }
 
         return _ok(
             {
@@ -323,10 +333,12 @@ def get_site(name):
                 "version": site_data.get("frappe_version", doc.version if doc else ""),
                 "region": site_data.get("cluster", doc.region if doc else ""),
                 "plan": plan,
+                "usage": usage,
                 "bench": site_data.get("group", doc.bench if doc else ""),
                 "bench_name": doc.bench_name if doc else "",
                 "project": doc.project if doc else "",
                 "apps": apps,
+                "default_domain": default_domain,
                 "domains": domains,
                 "setup_wizard_complete": site_data.get("setup_wizard_complete", False),
                 "creation": site_data.get("creation", ""),
