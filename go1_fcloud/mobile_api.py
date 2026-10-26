@@ -299,45 +299,39 @@ def get_site(name):
             for a in site_apps
         ]
 
-        # Fetch plan and usage from the dedicated current_plan endpoint
+        # Fetch plan + usage from the dedicated current_plan endpoint
+        # current_plan returns plan fields at top level (not nested)
         plan_info = unwrap(
             cloud_post("press.api.site.current_plan", {"name": cloud_name})
         ) or {}
 
-        # Plan details — try current_plan response, then fall back to site_data
-        plan_data = plan_info.get("plan") or site_data.get("plan") or {}
-        if isinstance(plan_data, dict):
-            plan = {
-                "name": plan_data.get("name", ""),
-                "plan_title": plan_data.get("plan_title", ""),
-                "price_inr": plan_data.get("price_inr", 0),
-                "price_usd": plan_data.get("price_usd", 0),
-            }
-        else:
-            plan = {"name": plan_data}
+        plan = {
+            "name": plan_info.get("name", ""),
+            "plan_title": plan_info.get("plan_title", ""),
+            "price_inr": plan_info.get("price_inr", 0),
+            "price_usd": plan_info.get("price_usd", 0),
+        }
 
-        # Usage limits from plan_info.total or plan_data fields
-        total = plan_info.get("total_storage_usage") or {}
-        cpu_limit = plan_info.get("total_cpu_usage_hours") or plan_data.get("cpu_time_per_day", 0) if isinstance(plan_data, dict) else 0
-        db_limit_mb = plan_info.get("total_database_usage") or (plan_data.get("max_database_usage", 0) if isinstance(plan_data, dict) else 0)
-        disk_limit_mb = plan_info.get("total_storage_usage") or (plan_data.get("max_storage_usage", 0) if isinstance(plan_data, dict) else 0)
+        # Limits from plan
+        cpu_limit = plan_info.get("cpu_time_per_day", 0)
+        db_limit_mb = plan_info.get("max_database_usage", 0)
+        disk_limit_mb = plan_info.get("max_storage_usage", 0)
 
-        # If total is a dict (structured response), extract from it
-        if isinstance(total, dict):
-            disk_limit_mb = total.get("storage", 0) or total.get("disk", 0)
-
-        # Current usage from plan_info or site_data
+        # Current usage from plan_info (added by the API) or site_data
         cpu_used = round(
-            plan_info.get("cpu_usage") or site_data.get("current_cpu_usage", 0), 2
+            plan_info.get("current_cpu_usage", 0)
+            or site_data.get("current_cpu_usage", 0), 4
         )
         db_used_mb = round(
-            plan_info.get("database_usage") or site_data.get("current_database_usage", 0), 2
+            plan_info.get("current_database_usage", 0)
+            or site_data.get("current_database_usage", 0), 2
         )
         disk_used_mb = round(
-            plan_info.get("storage_usage") or site_data.get("current_disk_usage", 0), 2
+            plan_info.get("current_disk_usage", 0)
+            or site_data.get("current_disk_usage", 0), 2
         )
 
-        # Format: disk and database in MB, display in GB if >= 1024 MB
+        # Format storage: show in GB if limit >= 1024 MB, else MB
         def _fmt_storage(used_mb, limit_mb):
             if limit_mb >= 1024:
                 used = round(used_mb / 1024, 1)
@@ -404,7 +398,6 @@ def get_site(name):
                 "domains": domains,
                 "setup_wizard_complete": site_data.get("setup_wizard_complete", False),
                 "creation": site_data.get("creation", ""),
-                "_plan_info": plan_info,
             }
         )
     except frappe.ValidationError as e:
