@@ -300,36 +300,28 @@ def get_site(name):
         ]
 
         # Fetch plan + usage from the dedicated current_plan endpoint
-        # current_plan returns plan fields at top level (not nested)
+        # Response: { current_plan: {plan doc}, total_cpu_usage_hours, total_database_usage, ... }
         plan_info = unwrap(
             cloud_post("press.api.site.current_plan", {"name": cloud_name})
         ) or {}
+        current_plan = plan_info.get("current_plan") or {}
 
         plan = {
-            "name": plan_info.get("name", ""),
-            "plan_title": plan_info.get("plan_title", ""),
-            "price_inr": plan_info.get("price_inr", 0),
-            "price_usd": plan_info.get("price_usd", 0),
+            "name": current_plan.get("name", ""),
+            "plan_title": current_plan.get("plan_title", ""),
+            "price_inr": current_plan.get("price_inr", 0),
+            "price_usd": current_plan.get("price_usd", 0),
         }
 
-        # Limits from plan
-        cpu_limit = plan_info.get("cpu_time_per_day", 0)
-        db_limit_mb = plan_info.get("max_database_usage", 0)
-        disk_limit_mb = plan_info.get("max_storage_usage", 0)
+        # Limits from plan_info top level (or fall back to current_plan doc)
+        cpu_limit = current_plan.get("cpu_time_per_day", 0)
+        db_limit_mb = plan_info.get("max_database_usage") or current_plan.get("max_database_usage", 0)
+        disk_limit_mb = plan_info.get("max_storage_usage") or current_plan.get("max_storage_usage", 0)
 
-        # Current usage from plan_info (added by the API) or site_data
-        cpu_used = round(
-            plan_info.get("current_cpu_usage", 0)
-            or site_data.get("current_cpu_usage", 0), 4
-        )
-        db_used_mb = round(
-            plan_info.get("current_database_usage", 0)
-            or site_data.get("current_database_usage", 0), 2
-        )
-        disk_used_mb = round(
-            plan_info.get("current_disk_usage", 0)
-            or site_data.get("current_disk_usage", 0), 2
-        )
+        # Current usage from plan_info top level
+        cpu_used = round(plan_info.get("total_cpu_usage_hours", 0), 4)
+        db_used_mb = round(plan_info.get("total_database_usage", 0), 2)
+        disk_used_mb = round(plan_info.get("total_storage_usage", 0), 2)
 
         # Format storage: show in GB if limit >= 1024 MB, else MB
         def _fmt_storage(used_mb, limit_mb):
@@ -398,8 +390,6 @@ def get_site(name):
                 "domains": domains,
                 "setup_wizard_complete": site_data.get("setup_wizard_complete", False),
                 "creation": site_data.get("creation", ""),
-                "_debug_plan_info": plan_info,
-                "_debug_site_plan": site_data.get("plan"),
             }
         )
     except frappe.ValidationError as e:
