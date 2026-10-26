@@ -767,7 +767,11 @@ def site_login(site_name, reason=None):
 @frappe.whitelist()
 def setup_site(site_name):
     """
-    Mark a site's setup wizard as complete.
+    Return a one-time login URL that opens the site's setup wizard.
+
+    The setup wizard will mark itself complete when the user finishes it
+    in the browser. We do NOT call setup_wizard_complete here because
+    that restarts the site and invalidates the login session.
 
     Args:
       site_name: Go1 FCloud Site doc name or Frappe Cloud site name
@@ -776,25 +780,22 @@ def setup_site(site_name):
         _require_role()
         cloud_name = _resolve_site(site_name)
 
-        # Get a login sid BEFORE marking setup complete, so the site
-        # session is still valid (setup_wizard_complete may restart the site).
         login_data = unwrap(
             cloud_post("press.api.site.login", {"name": cloud_name})
         ) or {}
         sid = login_data.get("sid", "") if isinstance(login_data, dict) else ""
         site_host = login_data.get("site", cloud_name) if isinstance(login_data, dict) else cloud_name
-        setup_url = f"https://{site_host}/api/method/login?sid={sid}" if sid else ""
-
-        result = unwrap(
-            cloud_post("press.api.site.setup_wizard_complete", {"name": cloud_name})
+        setup_url = (
+            f"https://{site_host}/api/method/login?sid={sid}&redirect-to=/setup-wizard"
+            if sid else ""
         )
 
-        return _ok({"result": result, "setup_url": setup_url})
+        return _ok({"setup_url": setup_url, "sid": sid, "site": site_host})
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
         frappe.log_error("mobile_api.setup_site", frappe.get_traceback())
-        return _err("Failed to complete site setup.")
+        return _err("Failed to generate setup wizard URL.")
 
 
 @frappe.whitelist()
