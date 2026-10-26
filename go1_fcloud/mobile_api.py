@@ -398,6 +398,8 @@ def get_site(name):
                 "domains": domains,
                 "setup_wizard_complete": site_data.get("setup_wizard_complete", False),
                 "creation": site_data.get("creation", ""),
+                "_debug_plan_info": plan_info,
+                "_debug_site_plan": site_data.get("plan"),
             }
         )
     except frappe.ValidationError as e:
