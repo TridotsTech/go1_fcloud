@@ -459,6 +459,80 @@ def site_action(name, action, extra=None):
 
 
 @frappe.whitelist()
+def get_site_plans(name):
+    """
+    Return available plans for a site, with the current plan marked.
+
+    Args:
+      name: Go1 FCloud Site doc name or Frappe Cloud site name
+    """
+    try:
+        _require_role()
+        cloud_name = _resolve_site(name)
+
+        # Get the site's current plan
+        plan_info = unwrap(
+            cloud_post("press.api.site.current_plan", {"name": cloud_name})
+        ) or {}
+        current_plan = plan_info.get("current_plan") or {}
+        current_plan_name = current_plan.get("name", "")
+
+        # Get all available site plans
+        all_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
+
+        plans = []
+        for p in all_plans:
+            plans.append({
+                "name": p.get("name", ""),
+                "plan_title": p.get("plan_title", ""),
+                "price_inr": p.get("price_inr", 0),
+                "price_usd": p.get("price_usd", 0),
+                "cpu_time_per_day": p.get("cpu_time_per_day", 0),
+                "max_storage_usage": p.get("max_storage_usage", 0),
+                "max_database_usage": p.get("max_database_usage", 0),
+                "is_current": p.get("name", "") == current_plan_name,
+            })
+
+        return _ok({
+            "current_plan": current_plan_name,
+            "plans": plans,
+        })
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_site_plans", frappe.get_traceback())
+        return _err("Failed to fetch site plans.")
+
+
+@frappe.whitelist()
+def change_site_plan(name, plan):
+    """
+    Change the plan of a site.
+
+    Args:
+      name: Go1 FCloud Site doc name or Frappe Cloud site name
+      plan: Plan name to switch to (e.g. "USD 5")
+    """
+    try:
+        _require_role()
+        cloud_name = _resolve_site(name)
+
+        if not plan:
+            return _err("Plan name is required.")
+
+        result = unwrap(
+            cloud_post("press.api.site.set_plan", {"name": cloud_name, "plan": plan})
+        )
+
+        return _ok({"plan": plan, "result": result})
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.change_site_plan", frappe.get_traceback())
+        return _err("Failed to change site plan.")
+
+
+@frappe.whitelist()
 def get_site_options(bench_name=None):
     """
     Return options needed to create a new site.
