@@ -313,8 +313,29 @@ def get_site(name):
         else:
             plan = {"name": plan_data}
 
-        domains = site_data.get("domains", [])
         default_domain = site_data.get("host_name", cloud_name)
+        raw_domains = site_data.get("domains", [])
+        domains = [
+            {
+                "domain": d.get("domain", ""),
+                "status": d.get("status", ""),
+                "primary": bool(d.get("primary") or d.get("domain") == default_domain),
+                "dns_type": d.get("dns_type", ""),
+                "redirect_to_primary": bool(d.get("redirect_to_primary")),
+            }
+            for d in raw_domains
+            if isinstance(d, dict)
+        ]
+        if not domains:
+            domains = [
+                {
+                    "domain": default_domain,
+                    "status": "Active",
+                    "primary": True,
+                    "dns_type": "",
+                    "redirect_to_primary": False,
+                }
+            ]
 
         usage = {
             "cpu": round(site_data.get("current_cpu_usage", 0), 2),
