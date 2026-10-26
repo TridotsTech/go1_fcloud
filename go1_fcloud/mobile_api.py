@@ -640,13 +640,34 @@ def delete_site_config(name, key):
         if not key:
             return _err("Config key is required.")
 
+        # Fetch existing config, remove the key, send full list back
+        existing = unwrap(
+            cloud_post("press.api.site.site_config", {"name": cloud_name})
+        ) or []
+
+        config_list = []
+        found = False
+        for item in existing:
+            if isinstance(item, dict) and item.get("key") == key:
+                found = True
+                continue
+            elif isinstance(item, dict):
+                config_list.append({
+                    "key": item.get("key", ""),
+                    "value": item.get("value", ""),
+                    "type": item.get("type", "String"),
+                })
+
+        if not found:
+            return _err(f"Config key '{key}' not found.")
+
         result = unwrap(
-            cloud_post("press.api.site.delete_config_key", {
+            cloud_post("press.api.site.update_config", {
                 "name": cloud_name,
-                "key": key,
+                "config": json.dumps(config_list),
             })
         )
-        return _ok({"key": key, "result": result})
+        return _ok({"key": key, "deleted": True, "result": result})
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
@@ -1916,13 +1937,34 @@ def delete_bench_config(name, key):
         if not key:
             return _err("Config key is required.")
 
+        # Fetch existing config, remove the key, send full list back
+        existing = unwrap(
+            cloud_post("press.api.bench.bench_config", {"name": bench_id})
+        ) or []
+
+        config_list = []
+        found = False
+        for item in existing:
+            if isinstance(item, dict) and item.get("key") == key:
+                found = True
+                continue
+            elif isinstance(item, dict):
+                config_list.append({
+                    "key": item.get("key", ""),
+                    "value": item.get("value", ""),
+                    "type": item.get("type", "String"),
+                })
+
+        if not found:
+            return _err(f"Config key '{key}' not found.")
+
         result = unwrap(
-            cloud_post("press.api.bench.delete_config_key", {
+            cloud_post("press.api.bench.update_config", {
                 "name": bench_id,
-                "key": key,
+                "config": json.dumps(config_list),
             })
         )
-        return _ok({"key": key, "result": result})
+        return _ok({"key": key, "deleted": True, "result": result})
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
