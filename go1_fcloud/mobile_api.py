@@ -299,7 +299,22 @@ def get_site(name):
             for a in site_apps
         ]
 
-        plan = site_data.get("plan") or {}
+        plan_data = site_data.get("plan") or {}
+        if isinstance(plan_data, dict):
+            plan = {
+                "name": plan_data.get("name", ""),
+                "plan_title": plan_data.get("plan_title", ""),
+                "price_inr": plan_data.get("price_inr", 0),
+                "price_usd": plan_data.get("price_usd", 0),
+                "cpu_time": plan_data.get("cpu_time_per_day", 0),
+                "disk": plan_data.get("max_storage_usage", 0),
+                "database_usage": plan_data.get("max_database_usage", 0),
+            }
+        else:
+            plan = {"name": plan_data}
+
+        domains = site_data.get("domains", [])
+
         return _ok(
             {
                 "name": doc.name if doc else cloud_name,
@@ -307,11 +322,12 @@ def get_site(name):
                 "status": site_data.get("status", doc.status if doc else ""),
                 "version": site_data.get("frappe_version", doc.version if doc else ""),
                 "region": site_data.get("cluster", doc.region if doc else ""),
-                "plan": plan.get("name", "") if isinstance(plan, dict) else plan,
+                "plan": plan,
                 "bench": site_data.get("group", doc.bench if doc else ""),
                 "bench_name": doc.bench_name if doc else "",
                 "project": doc.project if doc else "",
                 "apps": apps,
+                "domains": domains,
                 "setup_wizard_complete": site_data.get("setup_wizard_complete", False),
                 "creation": site_data.get("creation", ""),
             }
