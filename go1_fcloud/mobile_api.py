@@ -644,6 +644,83 @@ def delete_site_config(name, key):
 
 
 @frappe.whitelist()
+def get_site_backups(name):
+    """
+    Return the list of backups for a site.
+
+    Args:
+      name: Go1 FCloud Site doc name or Frappe Cloud site name
+    """
+    try:
+        _require_role()
+        cloud_name = _resolve_site(name)
+        result = unwrap(
+            cloud_post("press.api.site.backups", {"name": cloud_name})
+        ) or []
+
+        backups = []
+        for b in result:
+            backups.append({
+                "name": b.get("name", ""),
+                "status": b.get("status", ""),
+                "type": b.get("type", ""),
+                "creation": b.get("creation", ""),
+                "database_size": b.get("database_size", 0),
+                "public_size": b.get("public_size", 0),
+                "private_size": b.get("private_size", 0),
+                "config_file_size": b.get("config_file_size", 0),
+                "with_files": b.get("with_files", False),
+                "offsite": b.get("offsite", False),
+                "remote_database_file": b.get("remote_database_file", ""),
+                "remote_public_file": b.get("remote_public_file", ""),
+                "remote_private_file": b.get("remote_private_file", ""),
+            })
+
+        return _ok(backups)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_site_backups", frappe.get_traceback())
+        return _err("Failed to fetch site backups.")
+
+
+@frappe.whitelist()
+def get_site_backup_download_link(name, backup, file_type="database"):
+    """
+    Return a download URL for a specific backup file.
+
+    Args:
+      name:      Go1 FCloud Site doc name or Frappe Cloud site name
+      backup:    Backup name (e.g. "Site Backup 2026-10-25 12:00:00")
+      file_type: "database" | "public" | "private" | "config"
+    """
+    try:
+        _require_role()
+        cloud_name = _resolve_site(name)
+
+        if not backup:
+            return _err("Backup name is required.")
+        if file_type not in ("database", "public", "private", "config"):
+            return _err("Invalid file_type. Use: database, public, private, config")
+
+        result = unwrap(
+            cloud_post("press.api.site.get_backup_download_link", {
+                "name": cloud_name,
+                "backup": backup,
+                "file": file_type,
+            })
+        )
+        return _ok({"backup": backup, "file_type": file_type, "url": result})
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error(
+            "mobile_api.get_site_backup_download_link", frappe.get_traceback()
+        )
+        return _err("Failed to get backup download link.")
+
+
+@frappe.whitelist()
 def get_site_options(bench_name=None):
     """
     Return options needed to create a new site.
