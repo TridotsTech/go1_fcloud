@@ -1815,6 +1815,23 @@ def get_bench_config(name):
 
 
 @frappe.whitelist()
+def get_bench_config_keys():
+    """
+    Return the list of standard bench config keys available for selection.
+    Fetched live from Frappe Cloud.
+    """
+    try:
+        _require_role()
+        result = unwrap(
+            cloud_get("press.api.bench.get_bench_config_standard_keys")
+        ) or []
+        return _ok(result)
+    except Exception:
+        frappe.log_error("mobile_api.get_bench_config_keys", frappe.get_traceback())
+        return _err("Failed to fetch bench config keys.")
+
+
+@frappe.whitelist()
 def add_bench_config(name, key, value, config_type="String"):
     """
     Add or update a bench configuration key.
