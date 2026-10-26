@@ -532,10 +532,32 @@ def change_site_plan(name, plan):
         return _err("Failed to change site plan.")
 
 
+SITE_CONFIG_KEYS = [
+    {"key": "mail_server", "title": "Mail Server", "type": "String", "description": "SMTP mail server hostname"},
+    {"key": "mail_port", "title": "Mail Port", "type": "Number", "description": "SMTP port number"},
+    {"key": "mail_login", "title": "Mail Login", "type": "String", "description": "SMTP login username"},
+    {"key": "mail_password", "title": "Mail Password", "type": "Password", "description": "SMTP login password"},
+    {"key": "use_ssl", "title": "Use SSL", "type": "Boolean", "description": "Use SSL for email"},
+    {"key": "use_tls", "title": "Use TLS", "type": "Boolean", "description": "Use TLS for email"},
+    {"key": "auto_email_id", "title": "Auto Email ID", "type": "String", "description": "Default sender email address"},
+    {"key": "enable_frappe_logger", "title": "Enable Frappe Logger", "type": "Boolean", "description": "Enable debug logging"},
+    {"key": "monitor", "title": "Monitor", "type": "Boolean", "description": "Enable site monitoring"},
+    {"key": "server_script_enabled", "title": "Server Script Enabled", "type": "Boolean", "description": "Allow server scripts"},
+    {"key": "disable_website_cache", "title": "Disable Website Cache", "type": "Boolean", "description": "Disable caching for the website"},
+    {"key": "disable_global_search", "title": "Disable Global Search", "type": "Boolean", "description": "Disable global search indexing"},
+    {"key": "maintenance_mode", "title": "Maintenance Mode", "type": "Boolean", "description": "Put the site in maintenance mode"},
+    {"key": "pause_scheduler", "title": "Pause Scheduler", "type": "Boolean", "description": "Pause the background scheduler"},
+    {"key": "max_file_size", "title": "Max File Size", "type": "Number", "description": "Maximum upload file size in MB"},
+    {"key": "rate_limit", "title": "Rate Limit", "type": "JSON", "description": "Rate limiting configuration"},
+    {"key": "mute_emails", "title": "Mute Emails", "type": "Boolean", "description": "Suppress all outgoing emails"},
+    {"key": "allow_cors", "title": "Allow CORS", "type": "String", "description": "Allowed CORS origins"},
+]
+
+
 @frappe.whitelist()
 def get_site_config(name):
     """
-    Return the site configuration key-value pairs.
+    Return the site configuration key-value pairs and available config keys.
 
     Args:
       name: Go1 FCloud Site doc name or Frappe Cloud site name
@@ -546,7 +568,10 @@ def get_site_config(name):
         result = unwrap(
             cloud_post("press.api.site.site_config", {"name": cloud_name})
         ) or []
-        return _ok(result)
+        return _ok({
+            "config": result,
+            "available_keys": SITE_CONFIG_KEYS,
+        })
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
