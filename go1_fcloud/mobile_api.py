@@ -299,19 +299,69 @@ def get_site(name):
             for a in site_apps
         ]
 
-        plan_data = site_data.get("plan") or {}
+        # Fetch plan and usage from the dedicated current_plan endpoint
+        plan_info = unwrap(
+            cloud_post("press.api.site.current_plan", {"name": cloud_name})
+        ) or {}
+
+        # Plan details — try current_plan response, then fall back to site_data
+        plan_data = plan_info.get("plan") or site_data.get("plan") or {}
         if isinstance(plan_data, dict):
             plan = {
                 "name": plan_data.get("name", ""),
                 "plan_title": plan_data.get("plan_title", ""),
                 "price_inr": plan_data.get("price_inr", 0),
                 "price_usd": plan_data.get("price_usd", 0),
-                "cpu_time": plan_data.get("cpu_time_per_day", 0),
-                "disk": plan_data.get("max_storage_usage", 0),
-                "database_usage": plan_data.get("max_database_usage", 0),
             }
         else:
             plan = {"name": plan_data}
+
+        # Usage limits from plan_info.total or plan_data fields
+        total = plan_info.get("total_storage_usage") or {}
+        cpu_limit = plan_info.get("total_cpu_usage_hours") or plan_data.get("cpu_time_per_day", 0) if isinstance(plan_data, dict) else 0
+        db_limit_mb = plan_info.get("total_database_usage") or (plan_data.get("max_database_usage", 0) if isinstance(plan_data, dict) else 0)
+        disk_limit_mb = plan_info.get("total_storage_usage") or (plan_data.get("max_storage_usage", 0) if isinstance(plan_data, dict) else 0)
+
+        # If total is a dict (structured response), extract from it
+        if isinstance(total, dict):
+            disk_limit_mb = total.get("storage", 0) or total.get("disk", 0)
+
+        # Current usage from plan_info or site_data
+        cpu_used = round(
+            plan_info.get("cpu_usage") or site_data.get("current_cpu_usage", 0), 2
+        )
+        db_used_mb = round(
+            plan_info.get("database_usage") or site_data.get("current_database_usage", 0), 2
+        )
+        disk_used_mb = round(
+            plan_info.get("storage_usage") or site_data.get("current_disk_usage", 0), 2
+        )
+
+        # Format: disk and database in MB, display in GB if >= 1024 MB
+        def _fmt_storage(used_mb, limit_mb):
+            if limit_mb >= 1024:
+                used = round(used_mb / 1024, 1)
+                limit = round(limit_mb / 1024, 1)
+                return used, limit, f"{used} of {limit} GB"
+            else:
+                used = round(used_mb, 1)
+                limit = round(limit_mb, 1)
+                return used, limit, f"{used} of {limit} MB"
+
+        disk_used, disk_limit, disk_display = _fmt_storage(disk_used_mb, disk_limit_mb)
+        db_used, db_limit, db_display = _fmt_storage(db_used_mb, db_limit_mb)
+
+        usage = {
+            "cpu": cpu_used,
+            "cpu_limit": cpu_limit,
+            "cpu_display": f"{cpu_used} of {cpu_limit} hrs today",
+            "database": db_used,
+            "database_limit": db_limit,
+            "database_display": db_display,
+            "disk": disk_used,
+            "disk_limit": disk_limit,
+            "disk_display": disk_display,
+        }
 
         default_domain = site_data.get("host_name", cloud_name)
         raw_domains = site_data.get("domains", [])
@@ -337,25 +387,6 @@ def get_site(name):
                 }
             ]
 
-        cpu_used = round(site_data.get("current_cpu_usage", 0), 2)
-        cpu_limit = plan.get("cpu_time", 0)
-        db_used = round(site_data.get("current_database_usage", 0) / 1024, 2) if site_data.get("current_database_usage") else 0
-        db_limit = round(plan.get("database_usage", 0) / 1024, 2) if plan.get("database_usage") else 0
-        disk_used = round(site_data.get("current_disk_usage", 0) / 1024, 2) if site_data.get("current_disk_usage") else 0
-        disk_limit = round(plan.get("disk", 0) / 1024, 2) if plan.get("disk") else 0
-
-        usage = {
-            "cpu": cpu_used,
-            "cpu_limit": cpu_limit,
-            "cpu_display": f"{cpu_used} of {cpu_limit} hrs today",
-            "database": db_used,
-            "database_limit": db_limit,
-            "database_display": f"{db_used} of {db_limit} GB",
-            "disk": disk_used,
-            "disk_limit": disk_limit,
-            "disk_display": f"{disk_used} of {disk_limit} GB",
-        }
-
         return _ok(
             {
                 "name": doc.name if doc else cloud_name,
@@ -373,6 +404,7 @@ def get_site(name):
                 "domains": domains,
                 "setup_wizard_complete": site_data.get("setup_wizard_complete", False),
                 "creation": site_data.get("creation", ""),
+                "_plan_info": plan_info,
             }
         )
     except frappe.ValidationError as e:
