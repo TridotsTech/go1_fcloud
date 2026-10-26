@@ -712,6 +712,28 @@ def site_login(site_name, reason=None):
 
 
 @frappe.whitelist()
+def setup_site(site_name):
+    """
+    Mark a site's setup wizard as complete.
+
+    Args:
+      site_name: Go1 FCloud Site doc name or Frappe Cloud site name
+    """
+    try:
+        _require_role()
+        cloud_name = _resolve_site(site_name)
+        result = unwrap(
+            cloud_post("press.api.site.setup_wizard_complete", {"name": cloud_name})
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.setup_site", frappe.get_traceback())
+        return _err("Failed to complete site setup.")
+
+
+@frappe.whitelist()
 def get_site_jobs(site_name):
     """
     Return running and recent jobs for a site.
