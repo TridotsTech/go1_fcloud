@@ -1231,8 +1231,12 @@ def site_verify_dns(site_name, domain):
         cloud_name = _resolve_site(site_name)
         result = unwrap(
             cloud_post(
-                "press.api.site.verify_dns",
-                {"name": cloud_name, "domain": domain},
+                "press.api.client.run_doc_method",
+                {
+                    "dt": "Site Domain",
+                    "name": domain,
+                    "method": "retry_add_domain",
+                },
             )
         )
         return _ok(result)
