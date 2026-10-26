@@ -726,16 +726,19 @@ def setup_site(site_name):
     try:
         _require_role()
         cloud_name = _resolve_site(site_name)
-        result = unwrap(
-            cloud_post("press.api.site.setup_wizard_complete", {"name": cloud_name})
-        )
 
-        # Get a login sid so the mobile app can open the setup wizard URL
+        # Get a login sid BEFORE marking setup complete, so the site
+        # session is still valid (setup_wizard_complete may restart the site).
         login_data = unwrap(
             cloud_post("press.api.site.login", {"name": cloud_name})
         ) or {}
-        sid = login_data.get("sid", "")
-        setup_url = f"https://{cloud_name}/api/method/login?sid={sid}" if sid else ""
+        sid = login_data.get("sid", "") if isinstance(login_data, dict) else ""
+        site_host = login_data.get("site", cloud_name) if isinstance(login_data, dict) else cloud_name
+        setup_url = f"https://{site_host}/api/method/login?sid={sid}" if sid else ""
+
+        result = unwrap(
+            cloud_post("press.api.site.setup_wizard_complete", {"name": cloud_name})
+        )
 
         return _ok({"result": result, "setup_url": setup_url})
     except frappe.ValidationError as e:
