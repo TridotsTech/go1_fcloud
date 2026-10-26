@@ -1839,7 +1839,7 @@ def get_bench_config_keys():
     try:
         _require_role()
         result = unwrap(
-            cloud_get("press.api.bench.get_bench_config_standard_keys")
+            cloud_get("press.api.site.get_site_config_standard_keys")
         ) or []
         return _ok(result)
     except Exception:
