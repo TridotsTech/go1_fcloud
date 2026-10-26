@@ -790,17 +790,35 @@ def setup_site(site_name):
         _require_role()
         cloud_name = _resolve_site(site_name)
 
-        login_data = unwrap(
-            cloud_post("press.api.site.login", {"name": cloud_name})
-        ) or {}
-        sid = login_data.get("sid", "") if isinstance(login_data, dict) else ""
-        site_host = login_data.get("site", cloud_name) if isinstance(login_data, dict) else cloud_name
-        setup_url = (
-            f"https://{site_host}/api/method/login?sid={sid}&redirect-to=/setup-wizard"
-            if sid else ""
-        )
+        result = unwrap(cloud_post("press.api.site.login", {"name": cloud_name}))
 
-        return _ok({"setup_url": setup_url, "sid": sid, "site": site_host})
+        # Handle both dict {"sid": "...", "site": "..."} and string responses
+        if isinstance(result, dict) and result.get("sid"):
+            sid = result["sid"]
+            site_host = result.get("site", cloud_name)
+        elif isinstance(result, str) and result:
+            # Response may be the sid directly or a full login URL
+            if result.startswith("http"):
+                return _ok({
+                    "login_url": result,
+                    "setup_url": result,
+                    "setup_wizard_url": f"https://{cloud_name}/setup-wizard",
+                })
+            sid = result
+            site_host = cloud_name
+        else:
+            return _err("Failed to generate login session for the site.")
+
+        login_url = f"https://{site_host}/api/method/login?sid={sid}"
+        setup_wizard_url = f"https://{site_host}/setup-wizard"
+
+        return _ok({
+            "login_url": login_url,
+            "setup_url": login_url,
+            "setup_wizard_url": setup_wizard_url,
+            "sid": sid,
+            "site": site_host,
+        })
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
