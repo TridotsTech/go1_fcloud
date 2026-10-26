@@ -521,7 +521,7 @@ def change_site_plan(name, plan):
             return _err("Plan name is required.")
 
         result = unwrap(
-            cloud_post("press.api.site.set_plan", {"name": cloud_name, "plan": plan})
+            cloud_post("press.api.site.change_plan", {"name": cloud_name, "plan": plan})
         )
 
         return _ok({"plan": plan, "result": result})
