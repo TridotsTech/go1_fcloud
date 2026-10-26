@@ -22,6 +22,7 @@
 
 import frappe
 import json
+from datetime import datetime, timedelta
 from go1_fcloud.utils import cloud_get, cloud_post, unwrap
 
 MOBILE_ROLES = ("System Manager", "Frappe Cloud User")
@@ -291,6 +292,9 @@ def get_site(name):
                 "title": a.get("title", ""),
                 "repository": a.get("repository", ""),
                 "branch": a.get("branch", ""),
+                "current_tag": a.get("current_tag", ""),
+                "next_tag": a.get("next_tag", ""),
+                "update_available": bool(a.get("update_available")),
             }
             for a in site_apps
         ]
@@ -1510,6 +1514,118 @@ def get_server(name):
     except Exception:
         frappe.log_error("mobile_api.get_server", frappe.get_traceback())
         return _err(f"Failed to fetch server: {name}")
+
+
+@frappe.whitelist()
+def get_server_overview(name):
+    """
+    Return server overview: info, plan, current resource usage.
+
+    Args:
+      name: Go1 FCloud Server doc name
+    """
+    try:
+        _require_role()
+        doc = frappe.get_doc("Go1 FCloud Server", name)
+        server_id = doc.server_id or doc.server_name
+
+        server_data = unwrap(
+            cloud_post("press.api.server.get", {"name": server_id})
+        ) or {}
+        overview_data = unwrap(
+            cloud_post("press.api.server.overview", {"name": server_id})
+        ) or {}
+        usage_data = unwrap(
+            cloud_post("press.api.server.usage", {"name": server_id})
+        ) or {}
+
+        plan = overview_data.get("plan") or server_data.get("plan") or {}
+        memory_total = plan.get("memory", doc.memory) or 0
+        disk_total = plan.get("disk", doc.disk) or 0
+        memory_used_mb = usage_data.get("memory", 0)
+        memory_used = round(memory_used_mb / 1024, 1) if memory_used_mb else 0
+
+        return _ok({
+            "name": doc.name,
+            "server_id": server_id,
+            "server_name": server_data.get("title", doc.server_name),
+            "status": server_data.get("status", doc.status),
+            "server_type": server_data.get("server_type", ""),
+            "region": server_data.get("cluster", doc.region),
+            "image": server_data.get("cluster_image", "") or server_data.get("image", ""),
+            "creation": server_data.get("creation", ""),
+            "plan": {
+                "name": plan.get("name", ""),
+                "vcpu": plan.get("vcpu", doc.vcpu),
+                "memory": memory_total,
+                "disk": disk_total,
+                "price": plan.get("price_inr", doc.price),
+            },
+            "usage": {
+                "cpu": round(usage_data.get("vcpu", 0), 1),
+                "memory": memory_used,
+                "memory_total": memory_total,
+                "disk": round(usage_data.get("disk", 0), 1),
+                "disk_total": disk_total,
+            },
+            "database_server": server_data.get("database_server", ""),
+            "owner": overview_data.get("owner") or {},
+        })
+    except Exception:
+        frappe.log_error("mobile_api.get_server_overview", frappe.get_traceback())
+        return _err(f"Failed to fetch server overview: {name}")
+
+
+@frappe.whitelist()
+def get_server_analytics(name, duration="24h", timezone=None):
+    """
+    Return time-series analytics for a server.
+
+    Args:
+      name:     Go1 FCloud Server doc name
+      duration: "1h" | "6h" | "24h" | "7d"  (default "24h")
+      timezone: IANA timezone string (default: system timezone)
+    """
+    try:
+        _require_role()
+        doc = frappe.get_doc("Go1 FCloud Server", name)
+        server_id = doc.server_id or doc.server_name
+        tz = timezone or frappe.utils.get_system_timezone()
+
+        duration_map = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}
+        hours = duration_map.get(duration, 24)
+        end = datetime.utcnow()
+        start = end - timedelta(hours=hours)
+        start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        end_str = end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+        base_params = {
+            "name": server_id,
+            "timezone": tz,
+            "start": start_str,
+            "end": end_str,
+        }
+
+        metrics = {}
+        for metric in ("cpu", "memory", "network", "iops"):
+            params = {**base_params, "query": metric}
+            result = unwrap(cloud_post("press.api.server.analytics", params)) or {}
+            datasets = result.get("datasets") or []
+            labels = result.get("labels") or []
+            values = datasets[0]["data"] if datasets else []
+            avg_val = round(sum(values) / len(values), 2) if values else 0
+            peak_val = round(max(values), 2) if values else 0
+            metrics[metric] = {
+                "datasets": datasets,
+                "labels": labels,
+                "avg": avg_val,
+                "peak": peak_val,
+            }
+
+        return _ok(metrics)
+    except Exception:
+        frappe.log_error("mobile_api.get_server_analytics", frappe.get_traceback())
+        return _err(f"Failed to fetch server analytics: {name}")
 
 
 @frappe.whitelist()
