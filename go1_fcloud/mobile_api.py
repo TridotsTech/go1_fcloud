@@ -213,7 +213,7 @@ def get_sites(status_filter=None, search=None):
             local = local_by_url.get(site_name, {})
 
             sites.append({
-                "name": local.get("name", ""),
+                "name": local.get("name", "") or site_name,
                 "site_name": site_name,
                 "title": s.get("title", ""),
                 "status": status,
@@ -298,7 +298,7 @@ def get_site(name):
         plan = site_data.get("plan") or {}
         return _ok(
             {
-                "name": doc.name if doc else "",
+                "name": doc.name if doc else cloud_name,
                 "site_name": cloud_name,
                 "status": site_data.get("status", doc.status if doc else ""),
                 "version": site_data.get("frappe_version", doc.version if doc else ""),
