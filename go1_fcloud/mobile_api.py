@@ -589,15 +589,31 @@ def add_site_config(name, key, value, config_type="String"):
         if not key:
             return _err("Config key is required.")
 
-        # Send value as-is; Frappe Cloud handles type conversion
+        # Fetch existing config so we don't overwrite it
+        existing = unwrap(
+            cloud_post("press.api.site.site_config", {"name": cloud_name})
+        ) or []
+
+        # Build full config list: update if key exists, else append
+        updated = False
+        config_list = []
+        for item in existing:
+            if isinstance(item, dict) and item.get("key") == key:
+                config_list.append({"key": key, "value": value, "type": config_type})
+                updated = True
+            elif isinstance(item, dict):
+                config_list.append({
+                    "key": item.get("key", ""),
+                    "value": item.get("value", ""),
+                    "type": item.get("type", "String"),
+                })
+        if not updated:
+            config_list.append({"key": key, "value": value, "type": config_type})
+
         result = unwrap(
             cloud_post("press.api.site.update_config", {
                 "name": cloud_name,
-                "config": json.dumps([{
-                    "key": key,
-                    "value": value,
-                    "type": config_type,
-                }]),
+                "config": json.dumps(config_list),
             })
         )
         return _ok({"key": key, "value": value, "type": config_type, "result": result})
@@ -1849,15 +1865,31 @@ def add_bench_config(name, key, value, config_type="String"):
         if not key:
             return _err("Config key is required.")
 
-        # Send value as-is; Frappe Cloud handles type conversion
+        # Fetch existing config so we don't overwrite it
+        existing = unwrap(
+            cloud_post("press.api.bench.bench_config", {"name": bench_id})
+        ) or []
+
+        # Build full config list: update if key exists, else append
+        updated = False
+        config_list = []
+        for item in existing:
+            if isinstance(item, dict) and item.get("key") == key:
+                config_list.append({"key": key, "value": value, "type": config_type})
+                updated = True
+            elif isinstance(item, dict):
+                config_list.append({
+                    "key": item.get("key", ""),
+                    "value": item.get("value", ""),
+                    "type": item.get("type", "String"),
+                })
+        if not updated:
+            config_list.append({"key": key, "value": value, "type": config_type})
+
         result = unwrap(
             cloud_post("press.api.bench.update_config", {
                 "name": bench_id,
-                "config": json.dumps([{
-                    "key": key,
-                    "value": value,
-                    "type": config_type,
-                }]),
+                "config": json.dumps(config_list),
             })
         )
         return _ok({"key": key, "value": value, "type": config_type, "result": result})
