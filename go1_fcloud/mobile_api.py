@@ -1210,7 +1210,7 @@ def site_verify_dns(site_name, domain):
         cloud_name = _resolve_site(site_name)
         result = unwrap(
             cloud_post(
-                "press.api.site.verify_custom_domain",
+                "press.api.site.verify_dns",
                 {"name": cloud_name, "domain": domain},
             )
         )
