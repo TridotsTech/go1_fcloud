@@ -729,7 +729,15 @@ def setup_site(site_name):
         result = unwrap(
             cloud_post("press.api.site.setup_wizard_complete", {"name": cloud_name})
         )
-        return _ok(result)
+
+        # Get a login sid so the mobile app can open the setup wizard URL
+        login_data = unwrap(
+            cloud_post("press.api.site.login", {"name": cloud_name})
+        ) or {}
+        sid = login_data.get("sid", "")
+        setup_url = f"https://{cloud_name}/api/method/login?sid={sid}" if sid else ""
+
+        return _ok({"result": result, "setup_url": setup_url})
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
