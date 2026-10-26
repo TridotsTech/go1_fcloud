@@ -337,13 +337,23 @@ def get_site(name):
                 }
             ]
 
+        cpu_used = round(site_data.get("current_cpu_usage", 0), 2)
+        cpu_limit = plan.get("cpu_time", 0)
+        db_used = round(site_data.get("current_database_usage", 0) / 1024, 2) if site_data.get("current_database_usage") else 0
+        db_limit = round(plan.get("database_usage", 0) / 1024, 2) if plan.get("database_usage") else 0
+        disk_used = round(site_data.get("current_disk_usage", 0) / 1024, 2) if site_data.get("current_disk_usage") else 0
+        disk_limit = round(plan.get("disk", 0) / 1024, 2) if plan.get("disk") else 0
+
         usage = {
-            "cpu": round(site_data.get("current_cpu_usage", 0), 2),
-            "cpu_limit": plan.get("cpu_time", 0),
-            "database": round(site_data.get("current_database_usage", 0) / 1024, 2) if site_data.get("current_database_usage") else 0,
-            "database_limit": round(plan.get("database_usage", 0) / 1024, 2) if plan.get("database_usage") else 0,
-            "disk": round(site_data.get("current_disk_usage", 0) / 1024, 2) if site_data.get("current_disk_usage") else 0,
-            "disk_limit": round(plan.get("disk", 0) / 1024, 2) if plan.get("disk") else 0,
+            "cpu": cpu_used,
+            "cpu_limit": cpu_limit,
+            "cpu_display": f"{cpu_used} of {cpu_limit} hrs today",
+            "database": db_used,
+            "database_limit": db_limit,
+            "database_display": f"{db_used} of {db_limit} GB",
+            "disk": disk_used,
+            "disk_limit": disk_limit,
+            "disk_display": f"{disk_used} of {disk_limit} GB",
         }
 
         return _ok(
