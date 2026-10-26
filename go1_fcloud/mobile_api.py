@@ -1703,6 +1703,100 @@ def get_bench_deploy_candidate(candidate_name):
         return _err("Failed to fetch deploy candidate status.")
 
 
+@frappe.whitelist()
+def get_bench_config(name):
+    """
+    Return the bench configuration key-value pairs.
+
+    Args:
+      name: Go1 FCloud Bench doc name
+    """
+    try:
+        _require_role()
+        doc, bench_id = _resolve_bench(name)
+        result = unwrap(
+            cloud_post("press.api.bench.bench_config", {"name": bench_id})
+        ) or []
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_bench_config", frappe.get_traceback())
+        return _err("Failed to fetch bench config.")
+
+
+@frappe.whitelist()
+def add_bench_config(name, key, value, config_type="String"):
+    """
+    Add or update a bench configuration key.
+
+    Args:
+      name:        Go1 FCloud Bench doc name
+      key:         Config key (e.g. "http_timeout", "gunicorn_workers")
+      value:       Config value
+      config_type: "String" | "Number" | "Boolean" | "JSON" | "Password"
+    """
+    try:
+        _require_role()
+        doc, bench_id = _resolve_bench(name)
+
+        if not key:
+            return _err("Config key is required.")
+
+        # Convert value based on type
+        if config_type == "Number":
+            value = float(value) if "." in str(value) else int(value)
+        elif config_type == "Boolean":
+            value = str(value).lower() in ("true", "1", "yes")
+        elif config_type == "JSON":
+            value = json.loads(value) if isinstance(value, str) else value
+
+        result = unwrap(
+            cloud_post("press.api.bench.update_config", {
+                "name": bench_id,
+                "key": key,
+                "value": value,
+                "type": config_type,
+            })
+        )
+        return _ok({"key": key, "value": value, "type": config_type, "result": result})
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.add_bench_config", frappe.get_traceback())
+        return _err("Failed to add bench config.")
+
+
+@frappe.whitelist()
+def delete_bench_config(name, key):
+    """
+    Delete a bench configuration key.
+
+    Args:
+      name: Go1 FCloud Bench doc name
+      key:  Config key to remove
+    """
+    try:
+        _require_role()
+        doc, bench_id = _resolve_bench(name)
+
+        if not key:
+            return _err("Config key is required.")
+
+        result = unwrap(
+            cloud_post("press.api.bench.delete_config", {
+                "name": bench_id,
+                "key": key,
+            })
+        )
+        return _ok({"key": key, "result": result})
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.delete_bench_config", frappe.get_traceback())
+        return _err("Failed to delete bench config.")
+
+
 # =========================================================================== #
 #  SERVERS
 # =========================================================================== #
