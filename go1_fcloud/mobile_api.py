@@ -1832,20 +1832,15 @@ def add_bench_config(name, key, value, config_type="String"):
         if not key:
             return _err("Config key is required.")
 
-        # Convert value based on type
-        if config_type == "Number":
-            value = float(value) if "." in str(value) else int(value)
-        elif config_type == "Boolean":
-            value = str(value).lower() in ("true", "1", "yes")
-        elif config_type == "JSON":
-            value = json.loads(value) if isinstance(value, str) else value
-
+        # Send value as-is; Frappe Cloud handles type conversion
         result = unwrap(
             cloud_post("press.api.bench.update_config", {
                 "name": bench_id,
-                "key": key,
-                "value": value,
-                "type": config_type,
+                "config": json.dumps([{
+                    "key": key,
+                    "value": value,
+                    "type": config_type,
+                }]),
             })
         )
         return _ok({"key": key, "value": value, "type": config_type, "result": result})
@@ -1873,7 +1868,7 @@ def delete_bench_config(name, key):
             return _err("Config key is required.")
 
         result = unwrap(
-            cloud_post("press.api.bench.delete_config", {
+            cloud_post("press.api.bench.delete_config_key", {
                 "name": bench_id,
                 "key": key,
             })
