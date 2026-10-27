@@ -688,7 +688,6 @@ def get_site_backups(name):
         _require_role()
         cloud_name = _resolve_site(name)
 
-        # Use GET with query params — matches how the Press dashboard fetches backups
         result = unwrap(
             cloud_get("press.api.site.backups", {"name": cloud_name})
         ) or []
@@ -705,6 +704,10 @@ def get_site_backups(name):
                 "config_file_size": b.get("config_file_size", 0),
                 "with_files": b.get("with_files", False),
                 "offsite": b.get("offsite", False),
+                "database_url": b.get("database_url", ""),
+                "public_url": b.get("public_url", ""),
+                "private_url": b.get("private_url", ""),
+                "config_file_url": b.get("config_file_url", ""),
             })
 
         return _ok(backups)
@@ -734,20 +737,36 @@ def get_site_backup_download_link(name, backup, file_type="database"):
         if file_type not in ("database", "public", "private", "config"):
             return _err("Invalid file_type. Use: database, public, private, config")
 
-        # Use GET with query params — matches how the Press dashboard fetches backup links
-        result = unwrap(
-            cloud_get(
-                "press.api.site.get_backup_link",
-                {"name": cloud_name, "backup": backup, "file": file_type},
-            )
-        )
-        if result:
-            return _ok({
-                "backup": backup,
-                "file_type": file_type,
-                "url": result,
-            })
-        return _err(f"No {file_type} file available for this backup.")
+        # Fetch backups list (this endpoint works) and find matching backup
+        backups = unwrap(
+            cloud_get("press.api.site.backups", {"name": cloud_name})
+        ) or []
+
+        backup_data = None
+        for b in backups:
+            if b.get("name") == backup:
+                backup_data = b
+                break
+
+        if not backup_data:
+            return _err(f"Backup '{backup}' not found.")
+
+        # Map file_type to the URL field in backup data
+        url_field_map = {
+            "database": "database_url",
+            "public": "public_url",
+            "private": "private_url",
+            "config": "config_file_url",
+        }
+        url = backup_data.get(url_field_map[file_type], "")
+        if not url:
+            return _err(f"No {file_type} file available for this backup.")
+
+        return _ok({
+            "backup": backup,
+            "file_type": file_type,
+            "url": url,
+        })
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
@@ -1203,8 +1222,7 @@ def setup_site(site_name):
             if result.startswith("http"):
                 return _ok({
                     "login_url": result,
-                    "setup_url": result,
-                    "setup_wizard_url": f"https://{cloud_name}/setup-wizard",
+                    "setup_wizard_url": f"{result}&redirect-to=/setup-wizard" if "?" in result else f"{result}?redirect-to=/setup-wizard",
                 })
             sid = result
             site_host = cloud_name
@@ -1212,11 +1230,10 @@ def setup_site(site_name):
             return _err("Failed to generate login session for the site.")
 
         login_url = f"https://{site_host}/api/method/login?sid={sid}"
-        setup_wizard_url = f"https://{site_host}/setup-wizard"
+        setup_wizard_url = f"https://{site_host}/api/method/login?sid={sid}&redirect-to=/setup-wizard"
 
         return _ok({
             "login_url": login_url,
-            "setup_url": login_url,
             "setup_wizard_url": setup_wizard_url,
             "sid": sid,
             "site": site_host,
