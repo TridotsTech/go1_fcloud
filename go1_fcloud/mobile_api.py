@@ -687,22 +687,7 @@ def get_site_backups(name):
         _require_role()
         cloud_name = _resolve_site(name)
         result = unwrap(
-            cloud_get(
-                "press.api.client.get_list",
-                {
-                    "doctype": "Site Backup",
-                    "filters": json.dumps({"site": cloud_name, "status": "Success"}),
-                    "fields": json.dumps([
-                        "name", "status", "creation",
-                        "database_size", "public_size", "private_size",
-                        "config_file_size", "with_files", "offsite",
-                        "remote_database_file", "remote_public_file",
-                        "remote_private_file", "remote_config_file",
-                    ]),
-                    "order_by": "creation desc",
-                    "limit": 20,
-                },
-            )
+            cloud_post("press.api.site.backups", {"name": cloud_name})
         ) or []
 
         backups = []
@@ -717,10 +702,6 @@ def get_site_backups(name):
                 "config_file_size": b.get("config_file_size", 0),
                 "with_files": b.get("with_files", False),
                 "offsite": b.get("offsite", False),
-                "remote_database_file": b.get("remote_database_file", ""),
-                "remote_public_file": b.get("remote_public_file", ""),
-                "remote_private_file": b.get("remote_private_file", ""),
-                "remote_config_file": b.get("remote_config_file", ""),
             })
 
         return _ok(backups)
@@ -738,7 +719,7 @@ def get_site_backup_download_link(name, backup, file_type="database"):
 
     Args:
       name:      Go1 FCloud Site doc name or Frappe Cloud site name
-      backup:    Site Backup document name (from get_site_backups response)
+      backup:    Site Backup document name (from get_site_backups response "name" field)
       file_type: "database" | "public" | "private" | "config"
     """
     try:
@@ -750,41 +731,19 @@ def get_site_backup_download_link(name, backup, file_type="database"):
         if file_type not in ("database", "public", "private", "config"):
             return _err("Invalid file_type. Use: database, public, private, config")
 
-        # Fetch backup doc via client API to get remote file reference
-        backup_doc = unwrap(
-            cloud_get(
-                "press.api.client.get",
-                {"doctype": "Site Backup", "name": backup},
-            )
-        )
-        if not backup_doc:
-            return _err(f"Backup '{backup}' not found.")
-
-        # Verify backup belongs to the site
-        if backup_doc.get("site") != cloud_name:
-            return _err("Backup does not belong to this site.")
-
-        remote_field = f"remote_{file_type}_file"
-        remote_file = backup_doc.get(remote_field, "")
-        if not remote_file:
-            return _err(f"No {file_type} file available for this backup.")
-
-        # Get download link from Remote File
-        link_result = unwrap(
+        result = unwrap(
             cloud_post(
-                "press.api.client.get",
-                {"doctype": "Remote File", "name": remote_file},
+                "press.api.site.get_backup_link",
+                {"name": cloud_name, "backup": backup, "file": file_type},
             )
         )
-        download_url = (link_result or {}).get("url", "")
-        if not download_url:
-            return _err(f"Download URL not available for this {file_type} backup.")
-
-        return _ok({
-            "backup": backup,
-            "file_type": file_type,
-            "url": download_url,
-        })
+        if result:
+            return _ok({
+                "backup": backup,
+                "file_type": file_type,
+                "url": result,
+            })
+        return _err(f"No {file_type} file available for this backup.")
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
