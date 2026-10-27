@@ -1548,9 +1548,10 @@ def bench_action(name, action, extra=None):
     Args:
       name:   Go1 FCloud Bench doc name
       action: restart | rebuild | update_all_sites | archive |
-              deploy_check | remove_app
+              deploy_check | remove_app | change_branch
       extra:  JSON string with optional params
-              remove_app: {"app": "erpnext"}
+              remove_app:    {"app": "erpnext"}
+              change_branch: {"app": "erpnext", "to_branch": "version-15"}
     """
     try:
         _require_role()
@@ -1606,9 +1607,21 @@ def bench_action(name, action, extra=None):
             )
             return _ok(unwrap(result))
 
+        elif action == "change_branch":
+            params = json.loads(extra) if extra else {}
+            app = params.get("app", "")
+            to_branch = params.get("to_branch", "")
+            if not app or not to_branch:
+                return _err("App and to_branch are required. Pass extra: {\"app\": \"erpnext\", \"to_branch\": \"version-15\"}")
+            result = cloud_post(
+                "press.api.bench.change_branch",
+                {"name": bench_id, "app": app, "to_branch": to_branch},
+            )
+            return _ok(unwrap(result))
+
         else:
             return _err(
-                f"Unknown action: {action}. Valid: restart, rebuild, update_all_sites, archive, deploy_check, remove_app"
+                f"Unknown action: {action}. Valid: restart, rebuild, update_all_sites, archive, deploy_check, remove_app, change_branch"
             )
 
     except frappe.ValidationError as e:
