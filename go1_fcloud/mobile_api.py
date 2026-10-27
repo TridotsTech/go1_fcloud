@@ -687,7 +687,22 @@ def get_site_backups(name):
         _require_role()
         cloud_name = _resolve_site(name)
         result = unwrap(
-            cloud_post("press.api.site.backups", {"name": cloud_name})
+            cloud_get(
+                "press.api.client.get_list",
+                {
+                    "doctype": "Site Backup",
+                    "filters": json.dumps({"site": cloud_name, "status": "Success"}),
+                    "fields": json.dumps([
+                        "name", "status", "creation",
+                        "database_size", "public_size", "private_size",
+                        "config_file_size", "with_files", "offsite",
+                        "remote_database_file", "remote_public_file",
+                        "remote_private_file", "remote_config_file",
+                    ]),
+                    "order_by": "creation desc",
+                    "limit": 20,
+                },
+            )
         ) or []
 
         backups = []
@@ -695,7 +710,6 @@ def get_site_backups(name):
             backups.append({
                 "name": b.get("name", ""),
                 "status": b.get("status", ""),
-                "type": b.get("type", ""),
                 "creation": b.get("creation", ""),
                 "database_size": b.get("database_size", 0),
                 "public_size": b.get("public_size", 0),
@@ -706,6 +720,7 @@ def get_site_backups(name):
                 "remote_database_file": b.get("remote_database_file", ""),
                 "remote_public_file": b.get("remote_public_file", ""),
                 "remote_private_file": b.get("remote_private_file", ""),
+                "remote_config_file": b.get("remote_config_file", ""),
             })
 
         return _ok(backups)
@@ -723,7 +738,7 @@ def get_site_backup_download_link(name, backup, file_type="database"):
 
     Args:
       name:      Go1 FCloud Site doc name or Frappe Cloud site name
-      backup:    Backup name (e.g. "2026-10-25 12:00:00.000000")
+      backup:    Site Backup document name (from get_site_backups response)
       file_type: "database" | "public" | "private" | "config"
     """
     try:
@@ -735,19 +750,41 @@ def get_site_backup_download_link(name, backup, file_type="database"):
         if file_type not in ("database", "public", "private", "config"):
             return _err("Invalid file_type. Use: database, public, private, config")
 
-        result = unwrap(
+        # Fetch backup doc via client API to get remote file reference
+        backup_doc = unwrap(
             cloud_get(
-                "press.api.site.get_backup_link",
-                {"name": cloud_name, "backup": backup, "file": file_type},
+                "press.api.client.get",
+                {"doctype": "Site Backup", "name": backup},
             )
         )
-        if result:
-            return _ok({
-                "backup": backup,
-                "file_type": file_type,
-                "url": result,
-            })
-        return _err(f"No {file_type} file available for this backup.")
+        if not backup_doc:
+            return _err(f"Backup '{backup}' not found.")
+
+        # Verify backup belongs to the site
+        if backup_doc.get("site") != cloud_name:
+            return _err("Backup does not belong to this site.")
+
+        remote_field = f"remote_{file_type}_file"
+        remote_file = backup_doc.get(remote_field, "")
+        if not remote_file:
+            return _err(f"No {file_type} file available for this backup.")
+
+        # Get download link from Remote File
+        link_result = unwrap(
+            cloud_post(
+                "press.api.client.get",
+                {"doctype": "Remote File", "name": remote_file},
+            )
+        )
+        download_url = (link_result or {}).get("url", "")
+        if not download_url:
+            return _err(f"Download URL not available for this {file_type} backup.")
+
+        return _ok({
+            "backup": backup,
+            "file_type": file_type,
+            "url": download_url,
+        })
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
