@@ -736,10 +736,11 @@ def get_site_backup_download_link(name, backup, file_type="database"):
             return _err("Invalid file_type. Use: database, public, private, config")
 
         result = unwrap(
-            cloud_post("press.api.site.get_download_link", {
-                "name": cloud_name,
-                "backup": backup,
-                "file": file_type,
+            cloud_post("press.api.client.run_doc_method", {
+                "dt": "Site Backup",
+                "name": backup,
+                "method": "get_download_link",
+                "args": json.dumps({"file": file_type}),
             })
         )
         return _ok({"backup": backup, "file_type": file_type, "url": result})
