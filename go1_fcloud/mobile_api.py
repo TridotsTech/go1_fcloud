@@ -801,6 +801,44 @@ def site_restore(name, backup=None, database_file=None, public_file=None, privat
 
 
 @frappe.whitelist()
+def get_remote_site_backups(url, email, password):
+    """
+    Fetch available backups from a remote Frappe site using credentials.
+
+    Used in the "Restore from an existing site" flow where the user
+    provides a site URL, email, and password to retrieve backup files.
+
+    Args:
+      url:      Remote Frappe site URL (e.g. "https://mysite.frappe.cloud")
+      email:    Login email for the remote site
+      password: Login password for the remote site
+    """
+    try:
+        _require_role()
+
+        if not url:
+            return _err("Site URL is required.")
+        if not email:
+            return _err("Email is required.")
+        if not password:
+            return _err("Password is required.")
+
+        result = unwrap(
+            cloud_post("press.api.site.get_backup_links", {
+                "url": url,
+                "email": email,
+                "password": password,
+            })
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_remote_site_backups", frappe.get_traceback())
+        return _err("Failed to fetch backups from remote site.")
+
+
+@frappe.whitelist()
 def get_site_options(bench_name=None):
     """
     Return options needed to create a new site.
