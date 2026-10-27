@@ -763,18 +763,11 @@ def get_site_backup_download_link(name, backup, file_type="database"):
         if not remote_file:
             return _err(f"No {file_type} file available for this backup.")
 
-        # Get signed download URL
-        result = unwrap(
-            cloud_post("press.api.site.get_backup_link", {
-                "name": cloud_name,
-                "backup": backup,
-                "file": file_type,
-            })
-        )
-
-        # If the API returns a URL, use it; otherwise fall back to remote file path
-        url = result if result else remote_file
-        return _ok({"backup": backup, "file_type": file_type, "url": url})
+        return _ok({
+            "backup": backup,
+            "file_type": file_type,
+            "url": remote_file,
+        })
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
