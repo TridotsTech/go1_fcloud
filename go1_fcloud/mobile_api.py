@@ -2499,93 +2499,60 @@ def get_marketplace_apps(search=None):
 
 
 @frappe.whitelist()
-def get_marketplace_app_list(bench_name=None, search=None):
+def get_marketplace_app_list(bench_name=None, search=None, page=1, page_size=20):
     """
     List published Marketplace Apps available on Frappe Cloud.
 
-    When bench_name is provided, returns apps not yet installed on that
-    bench, with image, repository, branch (sources) and install counts.
-    Without bench_name, returns all published marketplace apps enriched
-    with image, description, repository, and branches.
+    Uses press.api.bench.all_apps which returns apps with image,
+    description, sources, repo, and total_installs.
 
     Args:
-      bench_name:  Optional Go1 FCloud Bench doc name to filter apps
-                   not already installed on that bench.
-      search:      Optional search string to filter by app title/name.
+      bench_name:  Optional Go1 FCloud Bench doc name to scope apps
+                   available for that bench.
+      search:      Optional search string to filter by app name, title,
+                   or description.
+      page:        Page number (default 1)
+      page_size:   Number of apps per page (default 20)
     """
     try:
         _require_role()
+        page = max(1, int(page))
+        page_size = max(1, min(100, int(page_size)))
 
         if bench_name:
-            doc = frappe.get_doc("Go1 FCloud Bench", bench_name)
-            bench_id = doc.id or doc.bench
-            apps = (
-                unwrap(
-                    cloud_post("press.api.bench.all_apps", {"name": bench_id})
-                )
-                or []
-            )
+            doc, bench_id = _resolve_bench(bench_name)
         else:
-            # 1. Full published apps list (name, title, route)
-            apps = (
-                unwrap(
-                    cloud_post("press.api.marketplace.get_marketplace_apps")
-                )
-                or []
-            )
+            bench_id = None
 
-            # 2. Repo / branch lookup from bench options
-            bench_opts = unwrap(cloud_post("press.api.bench.options")) or {}
-            source_map = {}  # app_name -> {repository, branches[]}
-            for ver in bench_opts.get("versions", []):
-                for opt_app in ver.get("apps", []):
-                    app_name = opt_app.get("name", "")
-                    if app_name in source_map:
-                        for src in opt_app.get("sources", []):
-                            branch = src.get("branch")
-                            if branch and branch not in source_map[app_name]["branches"]:
-                                source_map[app_name]["branches"].append(branch)
-                        continue
-                    sources = opt_app.get("sources") or []
-                    first = sources[0] if sources else {}
-                    source_map[app_name] = {
-                        "repository": (
-                            f"{first.get('repository_owner', '')}/{first.get('repository', '')}"
-                            if first.get("repository")
-                            else ""
-                        ),
-                        "repository_url": first.get("repository_url", ""),
-                        "branches": list(
-                            {s.get("branch") for s in sources if s.get("branch")}
-                        ),
-                    }
+        params = {}
+        if bench_id:
+            params["name"] = bench_id
 
-            # 3. Enrich each app with image, description, repo, branches
-            for app in apps:
-                name = app.get("name", "")
-                # Fetch detail per app (image, description)
-                try:
-                    detail = unwrap(
-                        cloud_post("press.api.marketplace.get", {"app": name})
-                    ) or {}
-                except Exception:
-                    detail = {}
-                app["image"] = detail.get("image") or ""
-                app["description"] = detail.get("description") or ""
+        apps = unwrap(cloud_post("press.api.bench.all_apps", params)) or []
 
-                src = source_map.get(name, {})
-                app["repository"] = src.get("repository", "")
-                app["repository_url"] = src.get("repository_url", "")
-                app["branches"] = src.get("branches", [])
-
+        # Search filter
         if search:
             q = search.lower()
             apps = [
-                a
-                for a in apps
-                if q in (a.get("title") or a.get("name") or "").lower()
+                a for a in apps
+                if q in (a.get("title") or "").lower()
+                or q in (a.get("name") or "").lower()
+                or q in (a.get("app") or "").lower()
+                or q in (a.get("description") or "").lower()
             ]
-        return _ok(apps)
+
+        total = len(apps)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated = apps[start:end]
+
+        return _ok({
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size,
+            "apps": paginated,
+        })
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
