@@ -1959,7 +1959,7 @@ def get_bench_deploy_candidate(candidate_name):
     try:
         _require_role()
         result = unwrap(
-            cloud_post(
+            cloud_get(
                 "press.api.bench.candidate", {"name": candidate_name}
             )
         )
