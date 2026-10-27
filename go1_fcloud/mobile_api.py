@@ -1501,6 +1501,22 @@ def get_bench(name):
             for v in versions[:5]
         ]
 
+        # Fetch sites on this bench
+        all_sites = unwrap(cloud_post("press.api.site.all")) or []
+        bench_sites = [
+            {
+                "site_name": s.get("name", ""),
+                "title": s.get("title", ""),
+                "status": s.get("status", ""),
+            }
+            for s in all_sites
+            if s.get("group") == bench_id
+        ]
+
+        # Region info
+        region = bench_data.get("cluster", "")
+        cluster_image = bench_data.get("cluster_image", "") or bench_data.get("image", "")
+
         return _ok(
             {
                 "name": doc.name if doc else "",
@@ -1508,11 +1524,14 @@ def get_bench(name):
                 "bench_id": bench_id,
                 "status": bench_data.get("status", ""),
                 "version": bench_data.get("version", ""),
-                "region": bench_data.get("cluster", ""),
+                "region": region,
+                "region_image": cluster_image,
                 "creation": bench_data.get("creation", ""),
                 "project": doc.project if doc else "",
                 "update_available": update_available,
                 "apps": apps,
+                "sites": bench_sites,
+                "site_count": len(bench_sites),
                 "recent_deploys": deploys,
             }
         )
