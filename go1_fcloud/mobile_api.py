@@ -1974,6 +1974,32 @@ def get_bench_deploy_candidate(candidate_name):
 
 
 @frappe.whitelist()
+def get_app_branch_list(name, app):
+    """
+    Return available git branches for an app on a bench.
+
+    Args:
+      name:  Go1 FCloud Bench doc name, Cloud bench ID, or bench title
+      app:   App name (e.g. "erpnext")
+    """
+    try:
+        _require_role()
+        doc, bench_id = _resolve_bench(name)
+        result = unwrap(
+            cloud_get(
+                "press.api.bench.branch_list",
+                {"name": bench_id, "app": app},
+            )
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_app_branch_list", frappe.get_traceback())
+        return _err("Failed to fetch branch list.")
+
+
+@frappe.whitelist()
 def get_bench_config(name):
     """
     Return the bench configuration key-value pairs.
