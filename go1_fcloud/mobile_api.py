@@ -740,7 +740,7 @@ def get_site_backup_download_link(name, backup, file_type="database"):
                 "dt": "Site Backup",
                 "name": backup,
                 "method": "get_download_link",
-                "args": json.dumps({"file": file_type}),
+                "args": {"file": file_type},
             })
         )
         return _ok({"backup": backup, "file_type": file_type, "url": result})
