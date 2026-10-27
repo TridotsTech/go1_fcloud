@@ -723,7 +723,7 @@ def get_site_backup_download_link(name, backup, file_type="database"):
 
     Args:
       name:      Go1 FCloud Site doc name or Frappe Cloud site name
-      backup:    Backup name (e.g. "Site Backup 2026-10-25 12:00:00")
+      backup:    Backup name (e.g. "2026-10-25 12:00:00.000000")
       file_type: "database" | "public" | "private" | "config"
     """
     try:
@@ -735,12 +735,33 @@ def get_site_backup_download_link(name, backup, file_type="database"):
         if file_type not in ("database", "public", "private", "config"):
             return _err("Invalid file_type. Use: database, public, private, config")
 
+        # Map file_type to the remote file field in Site Backup
+        file_field_map = {
+            "database": "remote_database_file",
+            "public": "remote_public_file",
+            "private": "remote_private_file",
+            "config": "remote_config_file",
+        }
+        remote_field = file_field_map[file_type]
+
+        # Fetch the backup doc to get the remote file path
+        backup_doc = unwrap(
+            cloud_post("press.api.client.get", {
+                "doctype": "Site Backup",
+                "name": backup,
+            })
+        ) or {}
+
+        remote_file = backup_doc.get(remote_field, "")
+        if not remote_file:
+            return _err(f"No {file_type} file available for this backup.")
+
+        # Get a signed download URL for the remote file
         result = unwrap(
             cloud_post("press.api.client.run_doc_method", {
-                "dt": "Site Backup",
-                "name": backup,
+                "dt": "Remote File",
+                "name": remote_file,
                 "method": "get_download_link",
-                "args": {"file": file_type},
             })
         )
         return _ok({"backup": backup, "file_type": file_type, "url": result})
