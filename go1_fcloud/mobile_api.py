@@ -1814,14 +1814,35 @@ def deploy_bench(name, apps=None, sites=None):
         if info.get("deploy_in_progress"):
             return _err("A deploy is already in progress for this bench.")
 
-        # Use caller-provided apps or fall back to all apps with updates
-        if apps:
-            apps_to_deploy = apps
-        else:
-            all_apps = info.get("apps", [])
-            apps_to_deploy = [app for app in all_apps if app.get("update_available")]
+        # Build full apps list — deploy requires ALL apps with a release
+        all_apps = info.get("apps", [])
+        app_info_map = {a.get("app"): a for a in all_apps}
 
-        if not apps_to_deploy:
+        if apps:
+            # User provided specific apps to update — merge with full list
+            user_apps = {a.get("app"): a for a in apps}
+            apps_to_deploy = []
+            for info_app in all_apps:
+                app_name = info_app.get("app", "")
+                user_app = user_apps.get(app_name)
+                if user_app:
+                    # User selected this app for update — use their release
+                    apps_to_deploy.append({
+                        "app": app_name,
+                        "release": user_app.get("release") or info_app.get("release", ""),
+                        "hash": user_app.get("hash") or info_app.get("hash", ""),
+                        "source": user_app.get("source") or info_app.get("source", ""),
+                        "update_available": True,
+                    })
+                else:
+                    # Not selected — keep current release
+                    apps_to_deploy.append(info_app)
+        else:
+            # No specific apps — send all apps (those with updates will deploy)
+            apps_to_deploy = all_apps
+
+        has_updates = any(a.get("update_available") for a in apps_to_deploy)
+        if not has_updates:
             return _err("No updates available to deploy.")
 
         # If sites provided, use deploy_and_update to deploy + update sites
