@@ -1656,19 +1656,35 @@ def deploy_and_update(bench_id, apps, sites):
 @frappe.whitelist()
 def get_bench_jobs(name):
     """
-    Return running jobs for a bench.
+    Return running and recent jobs for a bench.
 
     Args:
-      name:  Go1 FCloud Bench doc name
+      name:  Go1 FCloud Bench doc name, Cloud bench ID, or title
     """
     try:
         _require_role()
         doc, bench_id = _resolve_bench(name)
+
         running = (
-            unwrap(cloud_post("press.api.bench.running_jobs", {"name": bench_id}))
+            unwrap(cloud_get("press.api.bench.running_jobs", {"name": bench_id}))
             or []
         )
-        return _ok(running)
+
+        recent = (
+            unwrap(
+                cloud_get(
+                    "press.api.bench.jobs",
+                    {
+                        "filters": json.dumps({"name": bench_id}),
+                        "order_by": "creation desc",
+                        "limit_page_length": 20,
+                    },
+                )
+            )
+            or []
+        )
+
+        return _ok({"running": running, "recent": recent})
     except Exception:
         frappe.log_error("mobile_api.get_bench_jobs", frappe.get_traceback())
         return _err("Failed to fetch bench jobs.")
