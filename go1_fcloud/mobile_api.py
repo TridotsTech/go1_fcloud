@@ -735,39 +735,19 @@ def get_site_backup_download_link(name, backup, file_type="database"):
         if file_type not in ("database", "public", "private", "config"):
             return _err("Invalid file_type. Use: database, public, private, config")
 
-        # Map file_type to the remote file field in backup data
-        file_field_map = {
-            "database": "remote_database_file",
-            "public": "remote_public_file",
-            "private": "remote_private_file",
-            "config": "remote_config_file",
-        }
-        remote_field = file_field_map[file_type]
-
-        # Get backups list via site API (user has access to this)
-        backups = unwrap(
-            cloud_post("press.api.site.backups", {"name": cloud_name})
-        ) or []
-
-        # Find the matching backup
-        backup_data = None
-        for b in backups:
-            if b.get("name") == backup:
-                backup_data = b
-                break
-
-        if not backup_data:
-            return _err(f"Backup '{backup}' not found.")
-
-        remote_file = backup_data.get(remote_field, "")
-        if not remote_file:
-            return _err(f"No {file_type} file available for this backup.")
-
-        return _ok({
-            "backup": backup,
-            "file_type": file_type,
-            "url": remote_file,
-        })
+        result = unwrap(
+            cloud_post(
+                "press.api.site.get_backup_link",
+                {"name": cloud_name, "backup": backup, "file": file_type},
+            )
+        )
+        if result:
+            return _ok({
+                "backup": backup,
+                "file_type": file_type,
+                "url": result,
+            })
+        return _err(f"No {file_type} file available for this backup.")
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
