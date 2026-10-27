@@ -753,6 +753,54 @@ def get_site_backup_download_link(name, backup, file_type="database"):
 
 
 @frappe.whitelist()
+def site_restore(name, backup=None, database_file=None, public_file=None, private_file=None):
+    """
+    Restore a site from an existing backup or uploaded files.
+
+    Args:
+      name:           Go1 FCloud Site doc name or Frappe Cloud site name
+      backup:         Backup name to restore from (e.g. "2026-10-25 12:00:00.000000")
+      database_file:  URL of database backup file (for restore from files)
+      public_file:    URL of public files backup (optional, for restore from files)
+      private_file:   URL of private files backup (optional, for restore from files)
+
+    Either 'backup' OR 'database_file' must be provided.
+    """
+    try:
+        _require_role()
+        cloud_name = _resolve_site(name)
+
+        if not backup and not database_file:
+            return _err("Either backup name or database_file URL is required.")
+
+        params = {"name": cloud_name}
+
+        if backup:
+            # Restore from an existing site backup
+            params["files"] = {
+                "database": backup,
+            }
+        else:
+            # Restore from uploaded / remote files
+            files = {"database": database_file}
+            if public_file:
+                files["public"] = public_file
+            if private_file:
+                files["private"] = private_file
+            params["files"] = files
+
+        result = unwrap(
+            cloud_post("press.api.site.restore", params)
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.site_restore", frappe.get_traceback())
+        return _err("Failed to restore site.")
+
+
+@frappe.whitelist()
 def get_site_options(bench_name=None):
     """
     Return options needed to create a new site.
