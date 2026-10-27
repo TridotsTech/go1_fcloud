@@ -735,7 +735,7 @@ def get_site_backup_download_link(name, backup, file_type="database"):
         if file_type not in ("database", "public", "private", "config"):
             return _err("Invalid file_type. Use: database, public, private, config")
 
-        # Map file_type to the remote file field in Site Backup
+        # Map file_type to the remote file field in backup data
         file_field_map = {
             "database": "remote_database_file",
             "public": "remote_public_file",
@@ -744,24 +744,32 @@ def get_site_backup_download_link(name, backup, file_type="database"):
         }
         remote_field = file_field_map[file_type]
 
-        # Fetch the backup doc to get the remote file path
-        backup_doc = unwrap(
-            cloud_post("press.api.client.get", {
-                "doctype": "Site Backup",
-                "name": backup,
-            })
-        ) or {}
+        # Get backups list via site API (user has access to this)
+        backups = unwrap(
+            cloud_post("press.api.site.backups", {"name": cloud_name})
+        ) or []
 
-        remote_file = backup_doc.get(remote_field, "")
+        # Find the matching backup
+        backup_data = None
+        for b in backups:
+            if b.get("name") == backup:
+                backup_data = b
+                break
+
+        if not backup_data:
+            return _err(f"Backup '{backup}' not found.")
+
+        remote_file = backup_data.get(remote_field, "")
         if not remote_file:
             return _err(f"No {file_type} file available for this backup.")
 
-        # Get a signed download URL for the remote file
+        # Get signed download URL via the site's get_backup_link method
         result = unwrap(
             cloud_post("press.api.client.run_doc_method", {
-                "dt": "Remote File",
-                "name": remote_file,
-                "method": "get_download_link",
+                "dt": "Site",
+                "name": cloud_name,
+                "method": "get_backup_link",
+                "args": {"remote_file": remote_file},
             })
         )
         return _ok({"backup": backup, "file_type": file_type, "url": result})
