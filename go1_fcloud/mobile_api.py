@@ -682,12 +682,15 @@ def get_site_backups(name):
 
     Args:
       name: Go1 FCloud Site doc name or Frappe Cloud site name
+            (e.g. "mysite.frappe.cloud")
     """
     try:
         _require_role()
         cloud_name = _resolve_site(name)
+
+        # Use GET with query params — matches how the Press dashboard fetches backups
         result = unwrap(
-            cloud_post("press.api.site.backups", {"name": cloud_name})
+            cloud_get("press.api.site.backups", {"name": cloud_name})
         ) or []
 
         backups = []
@@ -731,8 +734,9 @@ def get_site_backup_download_link(name, backup, file_type="database"):
         if file_type not in ("database", "public", "private", "config"):
             return _err("Invalid file_type. Use: database, public, private, config")
 
+        # Use GET with query params — matches how the Press dashboard fetches backup links
         result = unwrap(
-            cloud_post(
+            cloud_get(
                 "press.api.site.get_backup_link",
                 {"name": cloud_name, "backup": backup, "file": file_type},
             )
