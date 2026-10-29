@@ -2370,8 +2370,9 @@ def get_server(name):
         app_plan_usage = _build_server_plan_usage(server_id)
 
         # Database server plan + usage
-        # Derive DB server name: replace leading "f" with "m"
-        db_server_id = "m" + server_id[1:] if server_id.startswith("f") else ""
+        db_server_id = server_data.get("database_server", "") or (
+            "m" + server_id[1:] if server_id.startswith("f") else ""
+        )
         db_plan_usage = {}
         if db_server_id:
             try:
@@ -2435,7 +2436,7 @@ def get_server_overview(name):
         region_info = server_data.get("region_info") or {}
 
         # Build app server plan + usage from already-fetched data
-        plan = overview_data.get("plan") or {}
+        plan = overview_data.get("plan") or server_data.get("plan") or {}
         vcpu_total = plan.get("vcpu", 0)
         memory_total = plan.get("memory", 0)
         disk_total = plan.get("disk", 0)
@@ -2466,7 +2467,9 @@ def get_server_overview(name):
         }
 
         # Database server plan + usage
-        db_server_id = "m" + server_id[1:] if server_id.startswith("f") else ""
+        db_server_id = server_data.get("database_server", "") or (
+            "m" + server_id[1:] if server_id.startswith("f") else ""
+        )
         db_plan_usage = {}
         if db_server_id:
             try:
