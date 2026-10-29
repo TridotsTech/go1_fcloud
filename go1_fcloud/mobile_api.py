@@ -1666,21 +1666,12 @@ def get_bench_jobs(name):
         doc, bench_id = _resolve_bench(name)
 
         running = (
-            unwrap(cloud_get("press.api.bench.running_jobs", {"name": bench_id}))
+            unwrap(cloud_post("press.api.bench.running_jobs", {"name": bench_id}))
             or []
         )
 
         recent = (
-            unwrap(
-                cloud_get(
-                    "press.api.bench.jobs",
-                    {
-                        "filters": json.dumps({"name": bench_id}),
-                        "order_by": "creation desc",
-                        "limit_page_length": 20,
-                    },
-                )
-            )
+            unwrap(cloud_post("press.api.bench.jobs", {"name": bench_id}))
             or []
         )
 
