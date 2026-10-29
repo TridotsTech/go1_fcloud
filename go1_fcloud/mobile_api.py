@@ -2305,6 +2305,13 @@ def get_servers():
         return _err("Failed to fetch servers.")
 
 
+def _normalize_memory(raw_memory):
+    """Normalize plan memory to GB — API may return MB (e.g. 4096) or GB (e.g. 4)."""
+    if raw_memory > 256:
+        return round(raw_memory / 1024)
+    return raw_memory
+
+
 def _build_server_plan_usage(server_id):
     """Fetch plan and usage for a single server (app or db) from Frappe Cloud."""
     overview = unwrap(
@@ -2316,13 +2323,18 @@ def _build_server_plan_usage(server_id):
 
     plan = overview.get("plan") or {}
     vcpu_total = plan.get("vcpu", 0)
-    memory_total = plan.get("memory", 0)
+    memory_raw = plan.get("memory", 0)
+    memory_total = _normalize_memory(memory_raw)
     disk_total = plan.get("disk", 0)
 
-    cpu_used = round(usage.get("vcpu", 0), 1)
+    cpu_used = max(round(usage.get("vcpu", 0), 1), 0)
     memory_used_mb = usage.get("memory", 0)
     memory_used = round(memory_used_mb / 1024, 1) if memory_used_mb else 0
     disk_used = round(usage.get("disk", 0), 1)
+
+    # Percentage: convert to common unit (MB) for accurate calculation
+    memory_total_mb = memory_raw if memory_raw > 256 else memory_raw * 1024
+    memory_pct = round((memory_used_mb / memory_total_mb) * 100, 1) if memory_total_mb else 0
 
     return {
         "plan_name": plan.get("name", ""),
@@ -2337,7 +2349,7 @@ def _build_server_plan_usage(server_id):
             "cpu_percent": round((cpu_used / vcpu_total) * 100, 1) if vcpu_total else 0,
             "memory": memory_used,
             "memory_total": memory_total,
-            "memory_percent": round((memory_used / memory_total) * 100, 1) if memory_total else 0,
+            "memory_percent": memory_pct,
             "disk": disk_used,
             "disk_total": disk_total,
             "disk_percent": round((disk_used / disk_total) * 100, 1) if disk_total else 0,
@@ -2438,13 +2450,18 @@ def get_server_overview(name):
         # Build app server plan + usage from already-fetched data
         plan = overview_data.get("plan") or server_data.get("plan") or {}
         vcpu_total = plan.get("vcpu", 0)
-        memory_total = plan.get("memory", 0)
+        memory_raw = plan.get("memory", 0)
+        memory_total = _normalize_memory(memory_raw)
         disk_total = plan.get("disk", 0)
 
-        cpu_used = round(usage_data.get("vcpu", 0), 1)
+        cpu_used = max(round(usage_data.get("vcpu", 0), 1), 0)
         memory_used_mb = usage_data.get("memory", 0)
         memory_used = round(memory_used_mb / 1024, 1) if memory_used_mb else 0
         disk_used = round(usage_data.get("disk", 0), 1)
+
+        # Percentage: convert to common unit (MB) for accurate calculation
+        memory_total_mb = memory_raw if memory_raw > 256 else memory_raw * 1024
+        memory_pct = round((memory_used_mb / memory_total_mb) * 100, 1) if memory_total_mb else 0
 
         app_plan_usage = {
             "plan_name": plan.get("name", ""),
@@ -2459,7 +2476,7 @@ def get_server_overview(name):
                 "cpu_percent": round((cpu_used / vcpu_total) * 100, 1) if vcpu_total else 0,
                 "memory": memory_used,
                 "memory_total": memory_total,
-                "memory_percent": round((memory_used / memory_total) * 100, 1) if memory_total else 0,
+                "memory_percent": memory_pct,
                 "disk": disk_used,
                 "disk_total": disk_total,
                 "disk_percent": round((disk_used / disk_total) * 100, 1) if disk_total else 0,
