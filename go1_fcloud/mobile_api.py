@@ -1979,7 +1979,7 @@ def get_bench_deploys(name):
     """
     Return deploy history for a bench including failed deploys.
 
-    Uses press.api.bench.deploys to fetch all deploy candidates
+    Uses press.api.bench.candidates to fetch all deploy candidates
     (Active, Failure, Running, etc.) instead of just active versions.
 
     Args:
@@ -1992,7 +1992,14 @@ def get_bench_deploys(name):
         # Fetch all deploy candidates (includes Failure, Active, etc.)
         candidates = (
             unwrap(
-                cloud_post("press.api.bench.deploys", {"name": bench_id})
+                cloud_post(
+                    "press.api.bench.candidates",
+                    {
+                        "filters": {"group": bench_id},
+                        "order_by": "creation desc",
+                        "limit_page_length": 20,
+                    },
+                )
             )
             or []
         )
