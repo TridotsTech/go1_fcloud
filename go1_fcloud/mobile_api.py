@@ -2579,19 +2579,11 @@ def get_server_options():
 
 
 @frappe.whitelist()
-def create_server(
-    title=None,
-    cluster=None,
-    plan=None,
-    db_plan=None,
-    provider=None,
-    deployment_mode=None,
-    service_type=None,
-):
+def create_server(**kwargs):
     """
     Create a new server on Frappe Cloud.
 
-    Args:
+    Kwargs:
       title:            Server name
       cluster:          Cluster/region name
       plan:             App server plan (machine type / plan name)
@@ -2602,6 +2594,14 @@ def create_server(
     """
     try:
         _require_role()
+
+        title = kwargs.get("title")
+        cluster = kwargs.get("cluster")
+        plan = kwargs.get("plan")
+        db_plan = kwargs.get("db_plan")
+        provider = kwargs.get("provider")
+        deployment_mode = kwargs.get("deployment_mode")
+        service_type = kwargs.get("service_type")
 
         if not title or not cluster or not plan:
             return _err("title, cluster, and plan are required.")
