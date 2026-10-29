@@ -1368,14 +1368,13 @@ def site_verify_dns(site_name, domain):
 
 
 @frappe.whitelist()
-def get_benches(status_filter=None, search=None, server=None):
+def get_benches(status_filter=None, search=None):
     """
     List all benches fetched live from Frappe Cloud with status counts.
 
     Args:
       status_filter: "Active" | "Awaiting Deploy" | "Update Available" | None (all)
       search:        substring search on bench title or id
-      server:        filter by server name (e.g. "f953-mumbai.frappe.cloud")
     """
     try:
         _require_role()
@@ -1390,10 +1389,6 @@ def get_benches(status_filter=None, search=None, server=None):
             or []
         )
 
-        # Client-side server filter
-        if server:
-            cloud_benches = [b for b in cloud_benches if b.get("server") == server]
-
         # Build local doc lookup for linking local doc name
         local_benches = frappe.get_all(
             "Go1 FCloud Bench",
@@ -1403,7 +1398,7 @@ def get_benches(status_filter=None, search=None, server=None):
         local_by_id = {b["id"]: b for b in local_benches if b.get("id")}
         local_by_title = {b["bench"]: b for b in local_benches if b.get("bench")}
 
-        # Count statuses across all benches (after server filter, before status/search)
+        # Count statuses across all benches (before filtering)
         status_counts = {}
         for b in cloud_benches:
             st = b.get("status", "")
@@ -1436,20 +1431,12 @@ def get_benches(status_filter=None, search=None, server=None):
                 "title": title,
                 "status": status,
                 "version": b.get("version", ""),
-                "cluster": b.get("cluster", ""),
-                "server": b.get("server", ""),
+                "tags": b.get("tags") or [],
                 "project": local.get("project", ""),
                 "creation": b.get("creation", ""),
                 "app_count": b.get("number_of_apps", 0),
                 "site_count": b.get("number_of_sites", 0),
-                "last_deploy": b.get("last_deploy", ""),
             })
-
-        # Debug: include raw keys from first bench to identify server field
-        all_benches_raw = unwrap(
-            cloud_post("press.api.bench.all", {"bench_filter": {"status": "All", "tag": ""}})
-        ) or []
-        first_bench_raw = all_benches_raw[0] if all_benches_raw else {}
 
         return _ok({
             "bench_count": {
@@ -1465,7 +1452,6 @@ def get_benches(status_filter=None, search=None, server=None):
                 {"status": "Update Available", "count": update_available_count},
             ],
             "benches": benches,
-            "_debug_bench_sample": first_bench_raw,
         })
     except Exception:
         frappe.log_error("mobile_api.get_benches", frappe.get_traceback())
