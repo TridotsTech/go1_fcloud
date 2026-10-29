@@ -2326,20 +2326,15 @@ def _normalize_memory(raw_memory):
     return raw_memory
 
 
-def _build_server_plan_usage(server_id):
-    """Fetch plan and usage for a single server (app or db) from Frappe Cloud."""
-    overview = unwrap(
-        cloud_post("press.api.server.overview", {"name": server_id})
-    ) or {}
-    usage = unwrap(
-        cloud_post("press.api.server.usage", {"name": server_id})
-    ) or {}
+def _extract_plan_usage(data):
+    """Extract plan and usage from a press.api.client.get Server response."""
+    plan = data.get("current_plan") or {}
+    usage = data.get("usage") or {}
 
-    plan = overview.get("plan") or {}
     vcpu_total = plan.get("vcpu", 0)
     memory_raw = plan.get("memory", 0)
     memory_total = _normalize_memory(memory_raw)
-    disk_total = plan.get("disk", 0)
+    disk_total = plan.get("disk", 0) or data.get("disk_size", 0)
 
     cpu_used = max(round(usage.get("vcpu", 0), 1), 0)
     memory_used_mb = usage.get("memory", 0)
@@ -2353,10 +2348,12 @@ def _build_server_plan_usage(server_id):
     return {
         "plan_name": plan.get("name", ""),
         "plan_title": plan.get("title", ""),
+        "platform": plan.get("platform", ""),
         "vcpu": vcpu_total,
         "memory": memory_total,
         "disk": disk_total,
-        "price": plan.get("price_inr", ""),
+        "price_inr": plan.get("price_inr", ""),
+        "price_usd": plan.get("price_usd", ""),
         "usage": {
             "cpu": cpu_used,
             "cpu_total": vcpu_total,
@@ -2369,6 +2366,14 @@ def _build_server_plan_usage(server_id):
             "disk_percent": round((disk_used / disk_total) * 100, 1) if disk_total else 0,
         },
     }
+
+
+def _fetch_server_doc(server_id, doctype="Server"):
+    """Fetch a server document from Frappe Cloud via press.api.client.get."""
+    return unwrap(cloud_post("press.api.client.get", {
+        "doctype": doctype,
+        "name": server_id,
+    })) or {}
 
 
 @frappe.whitelist()
@@ -2385,37 +2390,30 @@ def get_server(name):
             server_id = name
             doc = None
 
-        # Fetch server info from Frappe Cloud
-        server_data = unwrap(
-            cloud_post("press.api.server.get", {"name": server_id})
-        ) or {}
-
-        region_info = server_data.get("region_info") or {}
-
-        # App server plan + usage
-        app_plan_usage = _build_server_plan_usage(server_id)
+        # Single API call gets plan, usage, database_server, actions, etc.
+        app_data = _fetch_server_doc(server_id, "Server")
+        app_plan_usage = _extract_plan_usage(app_data)
 
         # Database server plan + usage
-        db_server_id = server_data.get("database_server", "") or (
-            "m" + server_id[1:] if server_id.startswith("f") else ""
-        )
+        db_server_id = app_data.get("database_server", "")
         db_plan_usage = {}
         if db_server_id:
             try:
-                db_plan_usage = _build_server_plan_usage(db_server_id)
+                db_data = _fetch_server_doc(db_server_id, "Database Server")
+                db_plan_usage = _extract_plan_usage(db_data)
             except Exception:
                 pass
 
         return _ok({
             "name": doc.name if doc else server_id,
             "server_id": server_id,
-            "server_name": server_data.get("title", ""),
-            "status": server_data.get("status", ""),
-            "cluster": region_info.get("name", ""),
-            "region": region_info.get("title", ""),
-            "region_image": region_info.get("image", ""),
-            "tags": server_data.get("server_tags") or [],
-            "creation": server_data.get("creation", ""),
+            "server_name": app_data.get("title", ""),
+            "status": app_data.get("status", ""),
+            "cluster": app_data.get("cluster", ""),
+            "provider": app_data.get("provider", ""),
+            "is_unified_server": app_data.get("is_unified_server", 0),
+            "creation": app_data.get("creation", ""),
+            "owner_email": app_data.get("owner_email", ""),
             "app_server": {
                 "name": server_id,
                 **app_plan_usage,
@@ -2424,6 +2422,7 @@ def get_server(name):
                 "name": db_server_id,
                 **db_plan_usage,
             } if db_plan_usage else {"name": db_server_id},
+            "actions": app_data.get("actions") or [],
         })
     except Exception:
         frappe.log_error("mobile_api.get_server", frappe.get_traceback())
@@ -2435,6 +2434,8 @@ def get_server_overview(name):
     """
     Return server overview: info, plan, current resource usage with
     separate app/database server plans and usage percentages.
+
+    Uses press.api.client.get for complete data in fewer API calls.
 
     Args:
       name: Go1 FCloud Server doc name or server ID
@@ -2449,75 +2450,30 @@ def get_server_overview(name):
             server_id = name
             doc = None
 
-        server_data = unwrap(
-            cloud_post("press.api.server.get", {"name": server_id})
-        ) or {}
-        overview_data = unwrap(
-            cloud_post("press.api.server.overview", {"name": server_id})
-        ) or {}
-        usage_data = unwrap(
-            cloud_post("press.api.server.usage", {"name": server_id})
-        ) or {}
-
-        region_info = server_data.get("region_info") or {}
-
-        # Build app server plan + usage from already-fetched data
-        plan = overview_data.get("plan") or server_data.get("plan") or {}
-        vcpu_total = plan.get("vcpu", 0)
-        memory_raw = plan.get("memory", 0)
-        memory_total = _normalize_memory(memory_raw)
-        disk_total = plan.get("disk", 0)
-
-        cpu_used = max(round(usage_data.get("vcpu", 0), 1), 0)
-        memory_used_mb = usage_data.get("memory", 0)
-        memory_used = round(memory_used_mb / 1024, 1) if memory_used_mb else 0
-        disk_used = round(usage_data.get("disk", 0), 1)
-
-        # Percentage: convert to common unit (MB) for accurate calculation
-        memory_total_mb = memory_raw if memory_raw > 256 else memory_raw * 1024
-        memory_pct = round((memory_used_mb / memory_total_mb) * 100, 1) if memory_total_mb else 0
-
-        app_plan_usage = {
-            "plan_name": plan.get("name", ""),
-            "plan_title": plan.get("title", ""),
-            "vcpu": vcpu_total,
-            "memory": memory_total,
-            "disk": disk_total,
-            "price": plan.get("price_inr", ""),
-            "usage": {
-                "cpu": cpu_used,
-                "cpu_total": vcpu_total,
-                "cpu_percent": round((cpu_used / vcpu_total) * 100, 1) if vcpu_total else 0,
-                "memory": memory_used,
-                "memory_total": memory_total,
-                "memory_percent": memory_pct,
-                "disk": disk_used,
-                "disk_total": disk_total,
-                "disk_percent": round((disk_used / disk_total) * 100, 1) if disk_total else 0,
-            },
-        }
+        # Single API call gets plan, usage, database_server, actions, etc.
+        app_data = _fetch_server_doc(server_id, "Server")
+        app_plan_usage = _extract_plan_usage(app_data)
 
         # Database server plan + usage
-        db_server_id = server_data.get("database_server", "") or (
-            "m" + server_id[1:] if server_id.startswith("f") else ""
-        )
+        db_server_id = app_data.get("database_server", "")
         db_plan_usage = {}
         if db_server_id:
             try:
-                db_plan_usage = _build_server_plan_usage(db_server_id)
+                db_data = _fetch_server_doc(db_server_id, "Database Server")
+                db_plan_usage = _extract_plan_usage(db_data)
             except Exception:
                 pass
 
         return _ok({
             "name": doc.name if doc else server_id,
             "server_id": server_id,
-            "server_name": server_data.get("title", getattr(doc, "server_name", "")),
-            "status": server_data.get("status", getattr(doc, "status", "")),
-            "server_type": server_data.get("server_type", ""),
-            "cluster": region_info.get("name", ""),
-            "region": region_info.get("title", server_data.get("cluster", getattr(doc, "region", ""))),
-            "region_image": region_info.get("image", "") or server_data.get("cluster_image", "") or server_data.get("image", ""),
-            "creation": server_data.get("creation", ""),
+            "server_name": app_data.get("title", getattr(doc, "server_name", "")),
+            "status": app_data.get("status", getattr(doc, "status", "")),
+            "cluster": app_data.get("cluster", ""),
+            "provider": app_data.get("provider", ""),
+            "is_unified_server": app_data.get("is_unified_server", 0),
+            "creation": app_data.get("creation", ""),
+            "owner_email": app_data.get("owner_email", ""),
             "app_server": {
                 "name": server_id,
                 **app_plan_usage,
@@ -2526,7 +2482,7 @@ def get_server_overview(name):
                 "name": db_server_id,
                 **db_plan_usage,
             } if db_plan_usage else {"name": db_server_id},
-            "owner": overview_data.get("owner") or {},
+            "actions": app_data.get("actions") or [],
         })
     except Exception:
         frappe.log_error("mobile_api.get_server_overview", frappe.get_traceback())
