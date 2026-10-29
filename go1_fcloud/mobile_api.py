@@ -2253,31 +2253,39 @@ def get_servers():
         local_by_id = {s["server_id"]: s for s in local_servers if s.get("server_id")}
         local_by_name = {s["server_name"]: s for s in local_servers if s.get("server_name")}
 
-        servers = []
+        # Separate app servers and db servers
+        app_servers = []
+        db_servers = []
         for s in cloud_servers:
-            # Skip Database servers — dashboard only shows App servers
-            if s.get("server_type") == "Database Server":
-                continue
+            server_id = s.get("name", "")
+            # Database server names start with "m", App server names start with "f"
+            if server_id.startswith("m"):
+                db_servers.append(s)
+            else:
+                app_servers.append(s)
 
+        servers = []
+        for s in app_servers:
             server_id = s.get("name", "")
             title = s.get("title", "")
             plan = s.get("plan") or {}
+            region_info = s.get("region_info") or {}
+            tags = s.get("tags") or []
             local = local_by_id.get(server_id) or local_by_name.get(title) or {}
 
             vcpu = plan.get("vcpu", 0)
             memory = plan.get("memory", 0)
             disk = plan.get("disk", 0)
 
-            # Find the paired database server
-            db_server = s.get("database_server", "")
-
             servers.append({
                 "name": local.get("name", ""),
                 "server_id": server_id,
                 "server_name": title,
                 "status": s.get("status", ""),
-                "region": s.get("cluster", ""),
-                "image": s.get("cluster_image", "") or s.get("image", ""),
+                "cluster": s.get("cluster", ""),
+                "region": region_info.get("title", s.get("cluster", "")),
+                "region_image": region_info.get("image", ""),
+                "tags": tags,
                 "vcpu": vcpu,
                 "memory": memory,
                 "disk": disk,
@@ -2285,8 +2293,10 @@ def get_servers():
                 "memory_display": f"{memory} GB RAM" if memory else "",
                 "disk_display": f"{disk} GB Disk" if disk else "",
                 "price": plan.get("price_inr", ""),
+                "plan_name": plan.get("name", ""),
+                "plan_title": plan.get("title", ""),
                 "creation": s.get("creation", ""),
-                "database_server": db_server,
+                "app_server": s.get("app_server", ""),
             })
 
         return _ok(servers)
