@@ -2610,10 +2610,8 @@ def create_server(**kwargs):
             "title": title,
             "cluster": cluster,
             "app_plan": plan,
+            "db_plan": db_plan or plan,
         }
-
-        if db_plan:
-            server["db_plan"] = db_plan
 
         if provider:
             server["provider"] = provider
