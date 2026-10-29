@@ -2406,7 +2406,8 @@ def get_server(name):
 @frappe.whitelist()
 def get_server_overview(name):
     """
-    Return server overview: info, plan, current resource usage.
+    Return server overview: info, plan, current resource usage with
+    separate app/database server plans and usage percentages.
 
     Args:
       name: Go1 FCloud Server doc name or server ID
@@ -2431,11 +2432,47 @@ def get_server_overview(name):
             cloud_post("press.api.server.usage", {"name": server_id})
         ) or {}
 
-        plan = overview_data.get("plan") or server_data.get("plan") or {}
-        memory_total = plan.get("memory", getattr(doc, "memory", 0)) or 0
-        disk_total = plan.get("disk", getattr(doc, "disk", 0)) or 0
+        region_info = server_data.get("region_info") or {}
+
+        # Build app server plan + usage from already-fetched data
+        plan = overview_data.get("plan") or {}
+        vcpu_total = plan.get("vcpu", 0)
+        memory_total = plan.get("memory", 0)
+        disk_total = plan.get("disk", 0)
+
+        cpu_used = round(usage_data.get("vcpu", 0), 1)
         memory_used_mb = usage_data.get("memory", 0)
         memory_used = round(memory_used_mb / 1024, 1) if memory_used_mb else 0
+        disk_used = round(usage_data.get("disk", 0), 1)
+
+        app_plan_usage = {
+            "plan_name": plan.get("name", ""),
+            "plan_title": plan.get("title", ""),
+            "vcpu": vcpu_total,
+            "memory": memory_total,
+            "disk": disk_total,
+            "price": plan.get("price_inr", ""),
+            "usage": {
+                "cpu": cpu_used,
+                "cpu_total": vcpu_total,
+                "cpu_percent": round((cpu_used / vcpu_total) * 100, 1) if vcpu_total else 0,
+                "memory": memory_used,
+                "memory_total": memory_total,
+                "memory_percent": round((memory_used / memory_total) * 100, 1) if memory_total else 0,
+                "disk": disk_used,
+                "disk_total": disk_total,
+                "disk_percent": round((disk_used / disk_total) * 100, 1) if disk_total else 0,
+            },
+        }
+
+        # Database server plan + usage
+        db_server_id = "m" + server_id[1:] if server_id.startswith("f") else ""
+        db_plan_usage = {}
+        if db_server_id:
+            try:
+                db_plan_usage = _build_server_plan_usage(db_server_id)
+            except Exception:
+                pass
 
         return _ok({
             "name": doc.name if doc else server_id,
@@ -2443,24 +2480,18 @@ def get_server_overview(name):
             "server_name": server_data.get("title", getattr(doc, "server_name", "")),
             "status": server_data.get("status", getattr(doc, "status", "")),
             "server_type": server_data.get("server_type", ""),
-            "region": server_data.get("cluster", getattr(doc, "region", "")),
-            "image": server_data.get("cluster_image", "") or server_data.get("image", ""),
+            "cluster": region_info.get("name", ""),
+            "region": region_info.get("title", server_data.get("cluster", getattr(doc, "region", ""))),
+            "region_image": region_info.get("image", "") or server_data.get("cluster_image", "") or server_data.get("image", ""),
             "creation": server_data.get("creation", ""),
-            "plan": {
-                "name": plan.get("name", ""),
-                "vcpu": plan.get("vcpu", getattr(doc, "vcpu", 0)),
-                "memory": memory_total,
-                "disk": disk_total,
-                "price": plan.get("price_inr", getattr(doc, "price", "")),
+            "app_server": {
+                "name": server_id,
+                **app_plan_usage,
             },
-            "usage": {
-                "cpu": round(usage_data.get("vcpu", 0), 1),
-                "memory": memory_used,
-                "memory_total": memory_total,
-                "disk": round(usage_data.get("disk", 0), 1),
-                "disk_total": disk_total,
-            },
-            "database_server": server_data.get("database_server", ""),
+            "database_server": {
+                "name": db_server_id,
+                **db_plan_usage,
+            } if db_plan_usage else {"name": db_server_id},
             "owner": overview_data.get("owner") or {},
         })
     except Exception:
@@ -2510,7 +2541,7 @@ def get_server_analytics(name, duration="24h", timezone=None):
             result = unwrap(cloud_post("press.api.server.analytics", params)) or {}
             datasets = result.get("datasets") or []
             labels = result.get("labels") or []
-            values = datasets[0]["data"] if datasets else []
+            values = (datasets[0].get("data") or []) if datasets else []
             avg_val = round(sum(values) / len(values), 2) if values else 0
             peak_val = round(max(values), 2) if values else 0
             metrics[metric] = {
