@@ -160,7 +160,7 @@ def dashboard():
 
 
 @frappe.whitelist()
-def get_sites(status_filter=None, search=None):
+def get_sites(status_filter=None, search=None, server=None):
     """
     List all sites fetched live from Frappe Cloud with status counts.
 
@@ -168,10 +168,16 @@ def get_sites(status_filter=None, search=None):
       status_filter: "Active" | "Inactive" | "Suspended" | "Broken" | "Attention" | None (all)
                      "Attention" matches both Broken and Suspended sites.
       search:        substring search on site name
+      server:        filter by server name (e.g. "f953-mumbai.frappe.cloud")
     """
     try:
         _require_role()
-        cloud_sites = unwrap(cloud_post("press.api.site.all")) or []
+
+        site_filter = {}
+        if server:
+            site_filter["server"] = server
+
+        cloud_sites = unwrap(cloud_post("press.api.site.all", site_filter or None)) or []
 
         # Build local doc lookup for linking local doc name
         local_sites = frappe.get_all(
@@ -220,6 +226,7 @@ def get_sites(status_filter=None, search=None):
                 "status": status,
                 "version": s.get("version", ""),
                 "region": s.get("cluster", ""),
+                "server": s.get("server", ""),
                 "plan": plan.get("name", "") if isinstance(plan, dict) else plan,
                 "bench": s.get("group", ""),
                 "bench_name": local.get("bench_name", ""),
