@@ -2278,7 +2278,7 @@ def get_servers():
             disk = plan.get("disk", 0)
 
             servers.append({
-                "name": local.get("name", ""),
+                "name": local.get("name", "") or server_id,
                 "server_id": server_id,
                 "server_name": title,
                 "status": s.get("status", ""),
