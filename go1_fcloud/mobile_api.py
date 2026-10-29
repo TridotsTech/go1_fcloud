@@ -2305,34 +2305,99 @@ def get_servers():
         return _err("Failed to fetch servers.")
 
 
+def _build_server_plan_usage(server_id):
+    """Fetch plan and usage for a single server (app or db) from Frappe Cloud."""
+    overview = unwrap(
+        cloud_post("press.api.server.overview", {"name": server_id})
+    ) or {}
+    usage = unwrap(
+        cloud_post("press.api.server.usage", {"name": server_id})
+    ) or {}
+
+    plan = overview.get("plan") or {}
+    vcpu_total = plan.get("vcpu", 0)
+    memory_total = plan.get("memory", 0)
+    disk_total = plan.get("disk", 0)
+
+    cpu_used = round(usage.get("vcpu", 0), 1)
+    memory_used_mb = usage.get("memory", 0)
+    memory_used = round(memory_used_mb / 1024, 1) if memory_used_mb else 0
+    disk_used = round(usage.get("disk", 0), 1)
+
+    return {
+        "plan_name": plan.get("name", ""),
+        "plan_title": plan.get("title", ""),
+        "vcpu": vcpu_total,
+        "memory": memory_total,
+        "disk": disk_total,
+        "price": plan.get("price_inr", ""),
+        "usage": {
+            "cpu": cpu_used,
+            "cpu_total": vcpu_total,
+            "cpu_percent": round((cpu_used / vcpu_total) * 100, 1) if vcpu_total else 0,
+            "memory": memory_used,
+            "memory_total": memory_total,
+            "memory_percent": round((memory_used / memory_total) * 100, 1) if memory_total else 0,
+            "disk": disk_used,
+            "disk_total": disk_total,
+            "disk_percent": round((disk_used / disk_total) * 100, 1) if disk_total else 0,
+        },
+    }
+
+
 @frappe.whitelist()
 def get_server(name):
     """Return full details for a server fetched live from Frappe Cloud."""
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Server", name)
-        server_id = doc.server_id or doc.server_name
 
-        # Fetch live from Frappe Cloud
+        # Support both local doc name and direct server ID
+        try:
+            doc = frappe.get_doc("Go1 FCloud Server", name)
+            server_id = doc.server_id or doc.server_name
+        except frappe.DoesNotExistError:
+            server_id = name
+            doc = None
+
+        # Fetch server info from Frappe Cloud
         server_data = unwrap(
             cloud_post("press.api.server.get", {"name": server_id})
         ) or {}
 
-        plan = server_data.get("plan") or {}
-        return _ok(
-            {
-                "name": doc.name,
-                "server_id": server_id,
-                "server_name": server_data.get("title", doc.server_name),
-                "status": server_data.get("status", doc.status),
-                "region": server_data.get("cluster", doc.region),
-                "vcpu": plan.get("vcpu", doc.vcpu),
-                "memory": plan.get("memory", doc.memory),
-                "disk": plan.get("disk", doc.disk),
-                "price": plan.get("price_inr", doc.price),
-                "creation": server_data.get("creation", ""),
-            }
-        )
+        region_info = server_data.get("region_info") or {}
+
+        # App server plan + usage
+        app_plan_usage = _build_server_plan_usage(server_id)
+
+        # Database server plan + usage
+        # Derive DB server name: replace leading "f" with "m"
+        db_server_id = "m" + server_id[1:] if server_id.startswith("f") else ""
+        db_plan_usage = {}
+        if db_server_id:
+            try:
+                db_plan_usage = _build_server_plan_usage(db_server_id)
+            except Exception:
+                pass
+
+        return _ok({
+            "name": doc.name if doc else server_id,
+            "server_id": server_id,
+            "server_name": server_data.get("title", ""),
+            "status": server_data.get("status", ""),
+            "cluster": region_info.get("name", ""),
+            "region": region_info.get("title", ""),
+            "region_image": region_info.get("image", ""),
+            "tags": server_data.get("server_tags") or [],
+            "creation": server_data.get("creation", ""),
+            "app_server": {
+                "name": server_id,
+                **app_plan_usage,
+            },
+            "database_server": {
+                "name": db_server_id,
+                **db_plan_usage,
+            } if db_plan_usage else {"name": db_server_id},
+        })
     except Exception:
         frappe.log_error("mobile_api.get_server", frappe.get_traceback())
         return _err(f"Failed to fetch server: {name}")
