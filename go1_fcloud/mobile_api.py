@@ -2579,27 +2579,49 @@ def get_server_options():
 
 
 @frappe.whitelist()
-def create_server(title, cluster, plan, db_plan):
+def create_server(
+    title,
+    cluster,
+    plan,
+    db_plan=None,
+    provider=None,
+    deployment_mode=None,
+    service_type=None,
+):
     """
     Create a new server on Frappe Cloud.
 
     Args:
-      title:    Server name
-      cluster:  Cluster/region name
-      plan:     App server plan (machine type / plan name)
-      db_plan:  Database server plan (machine type / plan name)
+      title:            Server name
+      cluster:          Cluster/region name
+      plan:             App server plan (machine type / plan name)
+      db_plan:          Database server plan (required for "separate" mode, omit for "unified")
+      provider:         Cloud provider (e.g. "AWS EC2", "OCI")
+      deployment_mode:  "separate" or "unified" (default: "separate")
+      service_type:     Plan type / service tier (e.g. "Standard", "Premium")
     """
     try:
         _require_role()
-        payload = {
-            "server": {
-                "title": title,
-                "cluster": cluster,
-                "app_plan": plan,
-                "db_plan": db_plan,
-            }
+
+        server = {
+            "title": title,
+            "cluster": cluster,
+            "app_plan": plan,
         }
-        result = cloud_post("press.api.server.new", payload)
+
+        if db_plan:
+            server["db_plan"] = db_plan
+
+        if provider:
+            server["provider"] = provider
+
+        if deployment_mode:
+            server["deployment_mode"] = deployment_mode
+
+        if service_type:
+            server["plan_type"] = service_type
+
+        result = cloud_post("press.api.server.new", {"server": server})
         server_name = unwrap(result)
         if server_name:
             return _ok({"name": server_name})
