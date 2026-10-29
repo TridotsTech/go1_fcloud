@@ -2540,13 +2540,19 @@ def get_server_analytics(name, duration="24h", timezone=None):
 
         metrics = {}
         for metric in ("cpu", "memory", "network", "iops"):
-            params = {**base_params, "query": metric}
-            result = unwrap(cloud_post("press.api.server.analytics", params)) or {}
-            datasets = result.get("datasets") or []
-            labels = result.get("labels") or []
-            values = (datasets[0].get("data") or []) if datasets else []
-            avg_val = round(sum(values) / len(values), 2) if values else 0
-            peak_val = round(max(values), 2) if values else 0
+            try:
+                params = {**base_params, "query": metric}
+                result = unwrap(cloud_post("press.api.server.analytics", params)) or {}
+                datasets = (result.get("datasets") or []) if isinstance(result, dict) else []
+                labels = (result.get("labels") or []) if isinstance(result, dict) else []
+                first_ds = datasets[0] if datasets else {}
+                raw_values = (first_ds.get("data") or []) if isinstance(first_ds, dict) else []
+                values = [v for v in raw_values if isinstance(v, (int, float))]
+                avg_val = round(sum(values) / len(values), 2) if values else 0
+                peak_val = round(max(values), 2) if values else 0
+            except Exception:
+                datasets, labels, values, avg_val, peak_val = [], [], [], 0, 0
+
             metrics[metric] = {
                 "datasets": datasets,
                 "labels": labels,
