@@ -1445,6 +1445,12 @@ def get_benches(status_filter=None, search=None, server=None):
                 "last_deploy": b.get("last_deploy", ""),
             })
 
+        # Debug: include raw keys from first bench to identify server field
+        all_benches_raw = unwrap(
+            cloud_post("press.api.bench.all", {"bench_filter": {"status": "All", "tag": ""}})
+        ) or []
+        first_bench_raw = all_benches_raw[0] if all_benches_raw else {}
+
         return _ok({
             "bench_count": {
                 "total": total,
@@ -1459,6 +1465,7 @@ def get_benches(status_filter=None, search=None, server=None):
                 {"status": "Update Available", "count": update_available_count},
             ],
             "benches": benches,
+            "_debug_bench_sample": first_bench_raw,
         })
     except Exception:
         frappe.log_error("mobile_api.get_benches", frappe.get_traceback())
