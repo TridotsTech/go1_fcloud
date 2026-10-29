@@ -1671,7 +1671,16 @@ def get_bench_jobs(name):
         )
 
         recent = (
-            unwrap(cloud_post("press.api.bench.jobs", {"name": bench_id}))
+            unwrap(
+                cloud_post(
+                    "press.api.bench.jobs",
+                    {
+                        "filters": {"name": bench_id},
+                        "order_by": "creation desc",
+                        "limit_page_length": 20,
+                    },
+                )
+            )
             or []
         )
 
