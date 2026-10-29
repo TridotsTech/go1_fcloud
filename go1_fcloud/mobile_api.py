@@ -1691,6 +1691,50 @@ def get_bench_jobs(name):
 
 
 @frappe.whitelist()
+def get_bench_dependencies(name):
+    """
+    Return active and supported dependencies for a bench (e.g. Node.js, Python versions).
+
+    Args:
+      name:  Go1 FCloud Bench doc name, Cloud bench ID, or title
+    """
+    try:
+        _require_role()
+        doc, bench_id = _resolve_bench(name)
+        result = cloud_post("press.api.bench.dependencies", {"name": bench_id})
+        return _ok(unwrap(result))
+    except Exception:
+        frappe.log_error("mobile_api.get_bench_dependencies", frappe.get_traceback())
+        return _err("Failed to fetch bench dependencies.")
+
+
+@frappe.whitelist(methods=["POST"])
+def update_bench_dependencies(name, dependencies=None):
+    """
+    Update dependencies (e.g. Node.js, Python versions) for a bench.
+
+    Args:
+      name:          Go1 FCloud Bench doc name, Cloud bench ID, or title
+      dependencies:  list of {"key": ..., "value": ...} dicts, or a JSON string
+    """
+    try:
+        _require_role()
+        doc, bench_id = _resolve_bench(name)
+
+        if isinstance(dependencies, str):
+            dependencies = json.loads(dependencies)
+
+        result = cloud_post(
+            "press.api.bench.update_dependencies",
+            {"name": bench_id, "dependencies": json.dumps(dependencies)},
+        )
+        return _ok(unwrap(result))
+    except Exception:
+        frappe.log_error("mobile_api.update_bench_dependencies", frappe.get_traceback())
+        return _err("Failed to update bench dependencies.")
+
+
+@frappe.whitelist()
 def get_bench_options():
     """
     Return options for creating a new bench:
