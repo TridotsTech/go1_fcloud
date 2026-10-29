@@ -173,11 +173,11 @@ def get_sites(status_filter=None, search=None, server=None):
     try:
         _require_role()
 
-        site_filter = {}
-        if server:
-            site_filter["server"] = server
+        cloud_sites = unwrap(cloud_post("press.api.site.all")) or []
 
-        cloud_sites = unwrap(cloud_post("press.api.site.all", site_filter or None)) or []
+        # Client-side server filter
+        if server:
+            cloud_sites = [s for s in cloud_sites if s.get("server") == server]
 
         # Build local doc lookup for linking local doc name
         local_sites = frappe.get_all(
@@ -187,7 +187,7 @@ def get_sites(status_filter=None, search=None, server=None):
         )
         local_by_url = {s["url"]: s for s in local_sites}
 
-        # Count statuses across all sites (before filtering)
+        # Count statuses across all sites (after server filter, before status/search)
         attention_statuses = {"Broken", "Suspended"}
         status_counts = {}
         for s in cloud_sites:
@@ -1380,19 +1380,19 @@ def get_benches(status_filter=None, search=None, server=None):
     try:
         _require_role()
 
-        bench_filter = {"status": "All", "tag": ""}
-        if server:
-            bench_filter["server"] = server
-
         cloud_benches = (
             unwrap(
                 cloud_post(
                     "press.api.bench.all",
-                    {"bench_filter": bench_filter},
+                    {"bench_filter": {"status": "All", "tag": ""}},
                 )
             )
             or []
         )
+
+        # Client-side server filter
+        if server:
+            cloud_benches = [b for b in cloud_benches if b.get("server") == server]
 
         # Build local doc lookup for linking local doc name
         local_benches = frappe.get_all(
@@ -1403,7 +1403,7 @@ def get_benches(status_filter=None, search=None, server=None):
         local_by_id = {b["id"]: b for b in local_benches if b.get("id")}
         local_by_title = {b["bench"]: b for b in local_benches if b.get("bench")}
 
-        # Count statuses across all benches (before filtering)
+        # Count statuses across all benches (after server filter, before status/search)
         status_counts = {}
         for b in cloud_benches:
             st = b.get("status", "")
