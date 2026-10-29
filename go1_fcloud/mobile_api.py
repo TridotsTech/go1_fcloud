@@ -2543,58 +2543,63 @@ def get_server_analytics(name, duration="24h", timezone=None):
       duration: "1h" | "6h" | "24h" | "7d"  (default "24h")
       timezone: IANA timezone string (default: system timezone)
     """
+    _require_role()
+
+    # Resolve server ID
     try:
-        _require_role()
+        doc = frappe.get_doc("Go1 FCloud Server", name)
+        server_id = doc.server_id or doc.server_name or name
+    except Exception:
+        server_id = name
 
-        # Support both local doc name and direct server ID
-        try:
-            doc = frappe.get_doc("Go1 FCloud Server", name)
-            server_id = doc.server_id or doc.server_name or name
-        except Exception:
-            server_id = name
-
+    try:
         tz = timezone or frappe.utils.get_system_timezone()
+    except Exception:
+        tz = "UTC"
 
-        duration_map = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}
-        hours = duration_map.get(duration, 24)
-        end = datetime.now()
-        start = end - timedelta(hours=hours)
-        start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        end_str = end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    duration_map = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}
+    hours = duration_map.get(duration, 24)
+    end = datetime.now()
+    start = end - timedelta(hours=hours)
+    start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    end_str = end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-        base_params = {
-            "name": server_id,
-            "timezone": tz,
-            "start": start_str,
-            "end": end_str,
-        }
+    def _fetch_metric(query):
+        """Fetch a single analytics metric, return safe defaults on any error."""
+        try:
+            params = {
+                "name": server_id,
+                "timezone": tz,
+                "start": start_str,
+                "end": end_str,
+                "query": query,
+            }
+            result = unwrap(cloud_post("press.api.server.analytics", params))
+            if not isinstance(result, dict):
+                return {"datasets": [], "labels": [], "avg": 0, "peak": 0}
 
-        metrics = {}
-        for metric in ("cpu", "memory", "network", "iops"):
-            try:
-                params = {**base_params, "query": metric}
-                result = unwrap(cloud_post("press.api.server.analytics", params)) or {}
-                datasets = (result.get("datasets") or []) if isinstance(result, dict) else []
-                labels = (result.get("labels") or []) if isinstance(result, dict) else []
-                first_ds = datasets[0] if datasets else {}
-                raw_values = (first_ds.get("data") or []) if isinstance(first_ds, dict) else []
-                values = [v for v in raw_values if isinstance(v, (int, float))]
-                avg_val = round(sum(values) / len(values), 2) if values else 0
-                peak_val = round(max(values), 2) if values else 0
-            except Exception:
-                datasets, labels, values, avg_val, peak_val = [], [], [], 0, 0
+            datasets = result.get("datasets") or []
+            labels = result.get("labels") or []
+            first_ds = datasets[0] if datasets else None
+            raw_values = (first_ds.get("data") or []) if isinstance(first_ds, dict) else []
+            values = [v for v in raw_values if isinstance(v, (int, float))]
+            avg_val = round(sum(values) / len(values), 2) if values else 0
+            peak_val = round(max(values), 2) if values else 0
 
-            metrics[metric] = {
+            return {
                 "datasets": datasets,
                 "labels": labels,
                 "avg": avg_val,
                 "peak": peak_val,
             }
+        except Exception:
+            return {"datasets": [], "labels": [], "avg": 0, "peak": 0}
 
-        return _ok(metrics)
-    except Exception:
-        frappe.log_error("mobile_api.get_server_analytics", frappe.get_traceback())
-        return _err(f"Failed to fetch server analytics: {name}")
+    metrics = {}
+    for metric in ("cpu", "memory", "network", "iops"):
+        metrics[metric] = _fetch_metric(metric)
+
+    return _ok(metrics)
 
 
 @frappe.whitelist()
