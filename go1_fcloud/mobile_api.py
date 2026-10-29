@@ -1361,21 +1361,27 @@ def site_verify_dns(site_name, domain):
 
 
 @frappe.whitelist()
-def get_benches(status_filter=None, search=None):
+def get_benches(status_filter=None, search=None, server=None):
     """
     List all benches fetched live from Frappe Cloud with status counts.
 
     Args:
       status_filter: "Active" | "Awaiting Deploy" | "Update Available" | None (all)
       search:        substring search on bench title or id
+      server:        filter by server name (e.g. "f953-mumbai.frappe.cloud")
     """
     try:
         _require_role()
+
+        bench_filter = {"status": "All", "tag": ""}
+        if server:
+            bench_filter["server"] = server
+
         cloud_benches = (
             unwrap(
                 cloud_post(
                     "press.api.bench.all",
-                    {"bench_filter": {"status": "All", "tag": ""}},
+                    {"bench_filter": bench_filter},
                 )
             )
             or []
@@ -1424,6 +1430,7 @@ def get_benches(status_filter=None, search=None):
                 "status": status,
                 "version": b.get("version", ""),
                 "cluster": b.get("cluster", ""),
+                "server": b.get("server", ""),
                 "project": local.get("project", ""),
                 "creation": b.get("creation", ""),
                 "app_count": b.get("number_of_apps", 0),
