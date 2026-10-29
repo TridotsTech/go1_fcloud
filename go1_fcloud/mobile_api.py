@@ -2430,7 +2430,8 @@ def get_server_options():
     """
     Return options for creating a new server:
       regions (with image), providers (with image),
-      app_plans, db_plans, plan_types, etc.
+      deployment_modes, service_types (plan_types with plans grouped),
+      app_plans, db_plans, etc.
 
     Endpoint: press.api.server.options
     """
@@ -2459,16 +2460,60 @@ def get_server_options():
                 "image": r.get("image", ""),
                 "cloud_provider": r.get("cloud_provider", ""),
                 "beta": r.get("beta", False),
+                "has_unified_server_support": r.get("has_unified_server_support", False),
+                "by_default_select_unified_mode": r.get("by_default_select_unified_mode", False),
             })
+
+        # Deployment modes: Separate vs Unified
+        deployment_modes = [
+            {
+                "name": "separate",
+                "title": "Separate Server for App and DB",
+                "description": "Dedicated servers for application and database.",
+            },
+            {
+                "name": "unified",
+                "title": "Unified Server for App and DB",
+                "description": "Single server for both application and database.",
+            },
+        ]
+
+        # Service types from plan_types (e.g. Standard, Premium)
+        raw_plan_types = data.get("plan_types", {})
+        default_plan_type = data.get("default_plan_type", "")
+
+        service_types = sorted(
+            [
+                {
+                    "name": pt.get("name", ""),
+                    "title": pt.get("title", ""),
+                    "description": pt.get("description", ""),
+                }
+                for pt in (
+                    raw_plan_types.values()
+                    if isinstance(raw_plan_types, dict)
+                    else raw_plan_types
+                )
+            ],
+            key=lambda s: s["title"],
+        )
+
+        # Back-fill plan_type on plans and group by service type
+        app_plans = data.get("app_plans", [])
+        db_plans = data.get("db_plans", [])
+        for plan in app_plans + db_plans:
+            if not plan.get("plan_type"):
+                plan["plan_type"] = default_plan_type
 
         return _ok({
             "regions": regions,
             "regions_data": regions_data,
             "providers": sorted(provider_map.values(), key=lambda p: p["name"]),
-            "app_plans": data.get("app_plans", []),
-            "db_plans": data.get("db_plans", []),
-            "plan_types": data.get("plan_types", []),
-            "default_plan_type": data.get("default_plan_type", ""),
+            "deployment_modes": deployment_modes,
+            "service_types": service_types,
+            "default_service_type": default_plan_type,
+            "app_plans": app_plans,
+            "db_plans": db_plans,
             "storage_plan": data.get("storage_plan"),
             "snapshot_plan": data.get("snapshot_plan"),
         })
