@@ -2429,13 +2429,49 @@ def server_action(name, action, extra=None):
 def get_server_options():
     """
     Return options for creating a new server:
-      clusters, plans, db_plans, etc.
+      regions (with image), providers (with image),
+      app_plans, db_plans, plan_types, etc.
+
     Endpoint: press.api.server.options
     """
     try:
         _require_role()
-        result = cloud_post("press.api.server.options")
-        return _ok(unwrap(result))
+        data = unwrap(cloud_post("press.api.server.options")) or {}
+
+        # Build providers list from regions_data
+        regions_data = data.get("regions_data", {})
+        provider_map = {}
+        for region_title, region_info in regions_data.items():
+            for prov_name, prov_info in region_info.get("providers", {}).items():
+                if prov_name not in provider_map:
+                    provider_map[prov_name] = {
+                        "name": prov_name,
+                        "title": prov_info.get("title", prov_name),
+                        "image": prov_info.get("provider_image", ""),
+                    }
+
+        # Build regions list from the flat regions array
+        regions = []
+        for r in data.get("regions", []):
+            regions.append({
+                "name": r.get("name", ""),
+                "title": r.get("title", ""),
+                "image": r.get("image", ""),
+                "cloud_provider": r.get("cloud_provider", ""),
+                "beta": r.get("beta", False),
+            })
+
+        return _ok({
+            "regions": regions,
+            "regions_data": regions_data,
+            "providers": sorted(provider_map.values(), key=lambda p: p["name"]),
+            "app_plans": data.get("app_plans", []),
+            "db_plans": data.get("db_plans", []),
+            "plan_types": data.get("plan_types", []),
+            "default_plan_type": data.get("default_plan_type", ""),
+            "storage_plan": data.get("storage_plan"),
+            "snapshot_plan": data.get("snapshot_plan"),
+        })
     except Exception:
         frappe.log_error("mobile_api.get_server_options", frappe.get_traceback())
         return _err("Failed to fetch server creation options.")
