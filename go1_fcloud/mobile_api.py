@@ -2366,8 +2366,8 @@ def get_server(name):
         # Support both local doc name and direct server ID
         try:
             doc = frappe.get_doc("Go1 FCloud Server", name)
-            server_id = doc.server_id or doc.server_name
-        except frappe.DoesNotExistError:
+            server_id = doc.server_id or doc.server_name or name
+        except Exception:
             server_id = name
             doc = None
 
@@ -2430,8 +2430,8 @@ def get_server_overview(name):
 
         try:
             doc = frappe.get_doc("Go1 FCloud Server", name)
-            server_id = doc.server_id or doc.server_name
-        except frappe.DoesNotExistError:
+            server_id = doc.server_id or doc.server_name or name
+        except Exception:
             server_id = name
             doc = None
 
@@ -2525,7 +2525,7 @@ def get_server_analytics(name, duration="24h", timezone=None):
     Return time-series analytics for a server.
 
     Args:
-      name:     Go1 FCloud Server doc name
+      name:     Go1 FCloud Server doc name or server ID
       duration: "1h" | "6h" | "24h" | "7d"  (default "24h")
       timezone: IANA timezone string (default: system timezone)
     """
@@ -2535,15 +2535,15 @@ def get_server_analytics(name, duration="24h", timezone=None):
         # Support both local doc name and direct server ID
         try:
             doc = frappe.get_doc("Go1 FCloud Server", name)
-            server_id = doc.server_id or doc.server_name
-        except frappe.DoesNotExistError:
+            server_id = doc.server_id or doc.server_name or name
+        except Exception:
             server_id = name
 
         tz = timezone or frappe.utils.get_system_timezone()
 
         duration_map = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}
         hours = duration_map.get(duration, 24)
-        end = datetime.utcnow()
+        end = datetime.now()
         start = end - timedelta(hours=hours)
         start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
         end_str = end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
@@ -2600,8 +2600,8 @@ def server_action(name, action, extra=None):
 
         try:
             doc = frappe.get_doc("Go1 FCloud Server", name)
-            server_id = doc.server_id or doc.server_name
-        except frappe.DoesNotExistError:
+            server_id = doc.server_id or doc.server_name or name
+        except Exception:
             server_id = name
             doc = None
 
