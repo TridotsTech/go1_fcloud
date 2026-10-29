@@ -1977,7 +1977,10 @@ def get_bench_deploy_info(name):
 @frappe.whitelist()
 def get_bench_deploys(name):
     """
-    Return deploy history for a bench using versions and deploy_information.
+    Return deploy history for a bench including failed deploys.
+
+    Uses press.api.bench.deploys to fetch all deploy candidates
+    (Active, Failure, Running, etc.) instead of just active versions.
 
     Args:
       name:  Go1 FCloud Bench doc name or Frappe Cloud bench ID
@@ -1986,10 +1989,10 @@ def get_bench_deploys(name):
         _require_role()
         doc, bench_id = _resolve_bench(name)
 
-        # Fetch deployed versions (each version is a deploy)
-        versions = (
+        # Fetch all deploy candidates (includes Failure, Active, etc.)
+        candidates = (
             unwrap(
-                cloud_post("press.api.bench.versions", {"name": bench_id})
+                cloud_post("press.api.bench.deploys", {"name": bench_id})
             )
             or []
         )
@@ -2005,13 +2008,13 @@ def get_bench_deploys(name):
         )
 
         deploys = []
-        for v in versions:
+        for c in candidates:
             deploys.append({
-                "name": v.get("name", ""),
-                "status": v.get("status", ""),
-                "creation": v.get("creation", ""),
-                "apps": v.get("apps", []),
-                "sites": v.get("sites", []),
+                "name": c.get("name", ""),
+                "status": c.get("status", ""),
+                "creation": c.get("creation", ""),
+                "apps": c.get("apps", []),
+                "sites": c.get("sites", []),
             })
 
         return _ok({
