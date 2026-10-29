@@ -2736,6 +2736,7 @@ def get_server_options():
             "db_plans": db_plans,
             "storage_plan": data.get("storage_plan"),
             "snapshot_plan": data.get("snapshot_plan"),
+            "raw_keys": list(data.keys()),
         })
     except Exception:
         frappe.log_error("mobile_api.get_server_options", frappe.get_traceback())
