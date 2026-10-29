@@ -2409,12 +2409,17 @@ def get_server_overview(name):
     Return server overview: info, plan, current resource usage.
 
     Args:
-      name: Go1 FCloud Server doc name
+      name: Go1 FCloud Server doc name or server ID
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Server", name)
-        server_id = doc.server_id or doc.server_name
+
+        try:
+            doc = frappe.get_doc("Go1 FCloud Server", name)
+            server_id = doc.server_id or doc.server_name
+        except frappe.DoesNotExistError:
+            server_id = name
+            doc = None
 
         server_data = unwrap(
             cloud_post("press.api.server.get", {"name": server_id})
@@ -2427,26 +2432,26 @@ def get_server_overview(name):
         ) or {}
 
         plan = overview_data.get("plan") or server_data.get("plan") or {}
-        memory_total = plan.get("memory", doc.memory) or 0
-        disk_total = plan.get("disk", doc.disk) or 0
+        memory_total = plan.get("memory", getattr(doc, "memory", 0)) or 0
+        disk_total = plan.get("disk", getattr(doc, "disk", 0)) or 0
         memory_used_mb = usage_data.get("memory", 0)
         memory_used = round(memory_used_mb / 1024, 1) if memory_used_mb else 0
 
         return _ok({
-            "name": doc.name,
+            "name": doc.name if doc else server_id,
             "server_id": server_id,
-            "server_name": server_data.get("title", doc.server_name),
-            "status": server_data.get("status", doc.status),
+            "server_name": server_data.get("title", getattr(doc, "server_name", "")),
+            "status": server_data.get("status", getattr(doc, "status", "")),
             "server_type": server_data.get("server_type", ""),
-            "region": server_data.get("cluster", doc.region),
+            "region": server_data.get("cluster", getattr(doc, "region", "")),
             "image": server_data.get("cluster_image", "") or server_data.get("image", ""),
             "creation": server_data.get("creation", ""),
             "plan": {
                 "name": plan.get("name", ""),
-                "vcpu": plan.get("vcpu", doc.vcpu),
+                "vcpu": plan.get("vcpu", getattr(doc, "vcpu", 0)),
                 "memory": memory_total,
                 "disk": disk_total,
-                "price": plan.get("price_inr", doc.price),
+                "price": plan.get("price_inr", getattr(doc, "price", "")),
             },
             "usage": {
                 "cpu": round(usage_data.get("vcpu", 0), 1),
@@ -2475,8 +2480,14 @@ def get_server_analytics(name, duration="24h", timezone=None):
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Server", name)
-        server_id = doc.server_id or doc.server_name
+
+        # Support both local doc name and direct server ID
+        try:
+            doc = frappe.get_doc("Go1 FCloud Server", name)
+            server_id = doc.server_id or doc.server_name
+        except frappe.DoesNotExistError:
+            server_id = name
+
         tz = timezone or frappe.utils.get_system_timezone()
 
         duration_map = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}
@@ -2529,8 +2540,14 @@ def server_action(name, action, extra=None):
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Server", name)
-        server_id = doc.server_id or doc.server_name
+
+        try:
+            doc = frappe.get_doc("Go1 FCloud Server", name)
+            server_id = doc.server_id or doc.server_name
+        except frappe.DoesNotExistError:
+            server_id = name
+            doc = None
+
         if not server_id:
             return _err("Server ID not set.")
 
@@ -2556,10 +2573,10 @@ def server_action(name, action, extra=None):
         result = cloud_post(endpoint, payload)
 
         # Post-action local state update
-        if action == "archive":
+        if doc and action == "archive":
             doc.status = "Deleted"
             doc.save(ignore_permissions=True)
-        elif action == "rename" and params.get("title"):
+        elif doc and action == "rename" and params.get("title"):
             doc.server_name = params["title"]
             doc.save(ignore_permissions=True)
 
