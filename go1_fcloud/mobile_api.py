@@ -2581,7 +2581,7 @@ def get_server_analytics(name, duration="24h", timezone=None):
             datasets = result.get("datasets") or []
             labels = result.get("labels") or []
             first_ds = datasets[0] if datasets else None
-            raw_values = (first_ds.get("data") or []) if isinstance(first_ds, dict) else []
+            raw_values = (first_ds.get("values") or first_ds.get("data") or []) if isinstance(first_ds, dict) else []
             values = [v for v in raw_values if isinstance(v, (int, float))]
             avg_val = round(sum(values) / len(values), 2) if values else 0
             peak_val = round(max(values), 2) if values else 0
@@ -2595,9 +2595,17 @@ def get_server_analytics(name, duration="24h", timezone=None):
         except Exception:
             return {"datasets": [], "labels": [], "avg": 0, "peak": 0}
 
+    # API query names → response keys
+    metric_queries = {
+        "cpu": "loadavg",
+        "memory": "memory",
+        "network": "network",
+        "iops": "iops",
+    }
+
     metrics = {}
-    for metric in ("cpu", "memory", "network", "iops"):
-        metrics[metric] = _fetch_metric(metric)
+    for key, query in metric_queries.items():
+        metrics[key] = _fetch_metric(query)
 
     return _ok(metrics)
 
