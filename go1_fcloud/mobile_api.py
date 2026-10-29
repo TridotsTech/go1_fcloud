@@ -2580,9 +2580,9 @@ def get_server_options():
 
 @frappe.whitelist()
 def create_server(
-    title,
-    cluster,
-    plan,
+    title=None,
+    cluster=None,
+    plan=None,
     db_plan=None,
     provider=None,
     deployment_mode=None,
@@ -2602,6 +2602,9 @@ def create_server(
     """
     try:
         _require_role()
+
+        if not title or not cluster or not plan:
+            return _err("title, cluster, and plan are required.")
 
         server = {
             "title": title,
