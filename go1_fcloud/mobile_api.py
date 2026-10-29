@@ -2248,6 +2248,10 @@ def get_servers():
 
         servers = []
         for s in cloud_servers:
+            # Skip Database servers — dashboard only shows App servers
+            if s.get("server_type") == "Database Server":
+                continue
+
             server_id = s.get("name", "")
             title = s.get("title", "")
             plan = s.get("plan") or {}
@@ -2256,6 +2260,9 @@ def get_servers():
             vcpu = plan.get("vcpu", 0)
             memory = plan.get("memory", 0)
             disk = plan.get("disk", 0)
+
+            # Find the paired database server
+            db_server = s.get("database_server", "")
 
             servers.append({
                 "name": local.get("name", ""),
@@ -2272,6 +2279,7 @@ def get_servers():
                 "disk_display": f"{disk} GB Disk" if disk else "",
                 "price": plan.get("price_inr", ""),
                 "creation": s.get("creation", ""),
+                "database_server": db_server,
             })
 
         return _ok(servers)
