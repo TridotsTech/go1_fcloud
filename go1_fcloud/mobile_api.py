@@ -1437,13 +1437,14 @@ def site_verify_dns(site_name, domain):
 
 
 @frappe.whitelist()
-def get_benches(status_filter=None, search=None):
+def get_benches(status_filter=None, search=None, server=None):
     """
     List all benches fetched live from Frappe Cloud with status counts.
 
     Args:
       status_filter: "Active" | "Awaiting Deploy" | "Update Available" | None (all)
       search:        substring search on bench title or id
+      server:        filter by server name (e.g. "f953-mumbai.frappe.cloud")
     """
     try:
         _require_role()
@@ -1458,14 +1459,28 @@ def get_benches(status_filter=None, search=None):
             or []
         )
 
+        # Client-side server filter
+        if server:
+            cloud_benches = [
+                b for b in cloud_benches
+                if b.get("server") == server or b.get("cluster") == server
+            ]
+
         # Build local doc lookup for linking local doc name
         local_benches = frappe.get_all(
             "Go1 FCloud Bench",
             filters={"is_dropped": 0},
-            fields=["name", "bench", "id", "project"],
+            fields=["name", "bench", "id", "project", "server"],
         )
         local_by_id = {b["id"]: b for b in local_benches if b.get("id")}
         local_by_title = {b["bench"]: b for b in local_benches if b.get("bench")}
+
+        # Collect unique server names for the filter dropdown
+        servers = set()
+        for b in cloud_benches:
+            srv = b.get("server") or b.get("cluster") or ""
+            if srv:
+                servers.add(srv)
 
         # Count statuses across all benches (before filtering)
         status_counts = {}
@@ -1505,6 +1520,7 @@ def get_benches(status_filter=None, search=None):
                 "creation": b.get("creation", ""),
                 "app_count": b.get("number_of_apps", 0),
                 "site_count": b.get("number_of_sites", 0),
+                "server": b.get("server") or b.get("cluster") or local.get("server", ""),
             })
 
         return _ok({
@@ -1520,6 +1536,7 @@ def get_benches(status_filter=None, search=None):
                 {"status": "Awaiting Deploy", "count": awaiting_deploy_count},
                 {"status": "Update Available", "count": update_available_count},
             ],
+            "servers": sorted(servers),
             "benches": benches,
         })
     except Exception:
