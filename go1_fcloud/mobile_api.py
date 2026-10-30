@@ -1449,28 +1449,42 @@ def get_benches(status_filter=None, search=None, server=None):
     try:
         _require_role()
 
+        # Use press.api.client.get_list with Release Group doctype
+        # to support server-side server filtering.
+        filters = {}
+        if server:
+            filters["server"] = server
+
         cloud_benches = (
             unwrap(
                 cloud_post(
-                    "press.api.bench.all",
-                    {"bench_filter": {"status": "All", "tag": ""}},
+                    "press.api.client.get_list",
+                    {
+                        "doctype": "Release Group",
+                        "fields": [
+                            "name",
+                            {"apps": ["app"]},
+                            {"servers": ["server"]},
+                            "title",
+                            "active_benches",
+                            "version",
+                            "creation",
+                            "status",
+                            "site_count",
+                        ],
+                        "filters": filters,
+                        "limit_page_length": 0,
+                    },
                 )
             )
             or []
         )
 
-        # Client-side server filter
-        if server:
-            cloud_benches = [
-                b for b in cloud_benches
-                if b.get("server") == server or b.get("cluster") == server
-            ]
-
         # Build local doc lookup for linking local doc name
         local_benches = frappe.get_all(
             "Go1 FCloud Bench",
             filters={"is_dropped": 0},
-            fields=["name", "bench", "id", "project", "server"],
+            fields=["name", "bench", "id", "project"],
         )
         local_by_id = {b["id"]: b for b in local_benches if b.get("id")}
         local_by_title = {b["bench"]: b for b in local_benches if b.get("bench")}
@@ -1478,11 +1492,12 @@ def get_benches(status_filter=None, search=None, server=None):
         # Collect unique server names for the filter dropdown
         servers = set()
         for b in cloud_benches:
-            srv = b.get("server") or b.get("cluster") or ""
-            if srv:
-                servers.add(srv)
+            for srv_entry in (b.get("servers") or []):
+                srv = srv_entry.get("server") or ""
+                if srv:
+                    servers.add(srv)
 
-        # Count statuses across all benches (before filtering)
+        # Count statuses across all benches (before status/search filtering)
         status_counts = {}
         for b in cloud_benches:
             st = b.get("status", "")
@@ -1509,18 +1524,28 @@ def get_benches(status_filter=None, search=None, server=None):
 
             local = local_by_id.get(bench_id) or local_by_title.get(title) or {}
 
+            # Extract server names from nested servers list
+            bench_servers = [
+                s.get("server", "") for s in (b.get("servers") or [])
+            ]
+            # Extract app names from nested apps list
+            bench_apps = [
+                a.get("app", "") for a in (b.get("apps") or [])
+            ]
+
             benches.append({
                 "name": local.get("name", ""),
                 "bench_id": bench_id,
                 "title": title,
                 "status": status,
                 "version": b.get("version", ""),
-                "tags": b.get("tags") or [],
                 "project": local.get("project", ""),
                 "creation": b.get("creation", ""),
-                "app_count": b.get("number_of_apps", 0),
-                "site_count": b.get("number_of_sites", 0),
-                "server": b.get("server") or b.get("cluster") or local.get("server", ""),
+                "app_count": len(bench_apps),
+                "site_count": b.get("site_count", 0),
+                "active_benches": b.get("active_benches", 0),
+                "servers": bench_servers,
+                "apps": bench_apps,
             })
 
         return _ok({
