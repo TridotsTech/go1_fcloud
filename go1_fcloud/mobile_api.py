@@ -2805,12 +2805,45 @@ def get_server_options():
             key=lambda s: s["title"],
         )
 
-        # Back-fill plan_type on plans and group by service type
+        # Back-fill plan_type on plans
         app_plans = data.get("app_plans", [])
         db_plans = data.get("db_plans", [])
         for plan in app_plans + db_plans:
             if not plan.get("plan_type"):
                 plan["plan_type"] = default_plan_type
+
+        # Group plans by service_type and deployment_mode
+        # deployment_mode on a plan: "separate" = needs separate app+db,
+        # "unified" = single server, absent/empty = available for both.
+        plans_by_service_type = {}
+        for st in service_types:
+            st_name = st["name"]
+            st_app = [p for p in app_plans if p.get("plan_type") == st_name]
+            st_db = [p for p in db_plans if p.get("plan_type") == st_name]
+
+            separate_app = [
+                p for p in st_app
+                if not p.get("deployment_mode") or p.get("deployment_mode") == "separate"
+            ]
+            separate_db = [
+                p for p in st_db
+                if not p.get("deployment_mode") or p.get("deployment_mode") == "separate"
+            ]
+            unified = [
+                p for p in st_app
+                if not p.get("deployment_mode") or p.get("deployment_mode") == "unified"
+            ]
+
+            plans_by_service_type[st_name] = {
+                "service_type": st,
+                "separate": {
+                    "app_plans": separate_app,
+                    "db_plans": separate_db,
+                },
+                "unified": {
+                    "app_plans": unified,
+                },
+            }
 
         return _ok({
             "regions": regions,
@@ -2819,11 +2852,11 @@ def get_server_options():
             "deployment_modes": deployment_modes,
             "service_types": service_types,
             "default_service_type": default_plan_type,
+            "plans_by_service_type": plans_by_service_type,
             "app_plans": app_plans,
             "db_plans": db_plans,
             "storage_plan": data.get("storage_plan"),
             "snapshot_plan": data.get("snapshot_plan"),
-            "raw_keys": list(data.keys()),
         })
     except Exception:
         frappe.log_error("mobile_api.get_server_options", frappe.get_traceback())
