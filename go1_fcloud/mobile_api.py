@@ -2785,7 +2785,7 @@ def get_server_options():
             },
         ]
 
-        # Service types from plan_types (e.g. Standard, Premium)
+        # Service types from plan_types (e.g. Dedicated Instance, Shared Instance)
         raw_plan_types = data.get("plan_types", {})
         default_plan_type = data.get("default_plan_type", "")
 
@@ -2795,6 +2795,7 @@ def get_server_options():
                     "name": pt.get("name", ""),
                     "title": pt.get("title", ""),
                     "description": pt.get("description", ""),
+                    "order_in_list": pt.get("order_in_list", 0),
                 }
                 for pt in (
                     raw_plan_types.values()
@@ -2802,7 +2803,7 @@ def get_server_options():
                     else raw_plan_types
                 )
             ],
-            key=lambda s: s["title"],
+            key=lambda s: s.get("order_in_list", 0),
         )
 
         # Back-fill plan_type on plans
@@ -2813,25 +2814,25 @@ def get_server_options():
                 plan["plan_type"] = default_plan_type
 
         # Group plans by service_type and deployment_mode
-        # deployment_mode on a plan: "separate" = needs separate app+db,
-        # "unified" = single server, absent/empty = available for both.
+        # allow_unified_server on a plan: 1 = can be used in unified mode,
+        # 0 = separate mode only.
+        # Separate mode needs both app_plans and db_plans.
+        # Unified mode needs only app_plans with allow_unified_server=1.
         plans_by_service_type = {}
         for st in service_types:
             st_name = st["name"]
             st_app = [p for p in app_plans if p.get("plan_type") == st_name]
             st_db = [p for p in db_plans if p.get("plan_type") == st_name]
 
-            separate_app = [
-                p for p in st_app
-                if not p.get("deployment_mode") or p.get("deployment_mode") == "separate"
-            ]
-            separate_db = [
-                p for p in st_db
-                if not p.get("deployment_mode") or p.get("deployment_mode") == "separate"
-            ]
+            # Separate mode: all app_plans (regardless of allow_unified_server)
+            # and all db_plans for this service type
+            separate_app = st_app
+            separate_db = st_db
+
+            # Unified mode: only app_plans where allow_unified_server == 1
             unified = [
                 p for p in st_app
-                if not p.get("deployment_mode") or p.get("deployment_mode") == "unified"
+                if p.get("allow_unified_server") == 1
             ]
 
             plans_by_service_type[st_name] = {
