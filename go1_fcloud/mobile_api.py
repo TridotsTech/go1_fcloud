@@ -97,15 +97,28 @@ def _resolve_bench(name):
 
 
 @frappe.whitelist()
-def dashboard():
+def dashboard(activity_filter=None):
     """
-    Return a summary of all resources for the mobile home screen.
+    Return a summary of all resources for the mobile home screen,
+    including recent activity with optional status filtering.
+
+    Args:
+      activity_filter: "Success" | "Failed" | None (all)
 
     Response:
-      sites:    { total, active, inactive, updating }
-      benches:  { total, active }
-      servers:  { total, active }
-      account:  { team, balance }
+      sites:           { total, active, inactive, suspended, updating }
+      benches:         { total, active }
+      servers:         { total, active }
+      recent_activity: [
+        {
+          "title":    action/type label,
+          "status":   "Success" | "Failed" | "Running" | "Pending",
+          "type":     "site",
+          "site":     cloud site name,
+          "creation": ISO timestamp,
+          "reason":   optional detail
+        }
+      ]
     """
     try:
         _require_role()
@@ -142,16 +155,72 @@ def dashboard():
             "active": sum(1 for s in cloud_servers if s.get("status") == "Active"),
         }
 
+        # --- Recent Activity ---
+        activities = []
+        site_names = [s.get("name") for s in cloud_sites if s.get("name")]
+
+        for site_name in site_names[:10]:
+            try:
+                site_activities = (
+                    unwrap(
+                        cloud_post(
+                            "press.api.site.activities",
+                            {
+                                "filters": {"site": site_name},
+                                "order_by": "creation desc",
+                                "limit_page_length": 5,
+                            },
+                        )
+                    )
+                    or []
+                )
+                for a in site_activities:
+                    status_raw = (a.get("status") or "").strip()
+                    activities.append(
+                        {
+                            "title": a.get("action") or a.get("type") or "Activity",
+                            "status": _normalise_activity_status(status_raw),
+                            "type": "site",
+                            "site": site_name,
+                            "creation": a.get("creation") or "",
+                            "reason": a.get("reason") or "",
+                        }
+                    )
+            except Exception:
+                continue
+
+        activities.sort(key=lambda x: x.get("creation", ""), reverse=True)
+        activities = activities[:20]
+
+        # Apply activity_filter
+        if activity_filter in ("Success", "Failed"):
+            activities = [
+                a for a in activities if a.get("status") == activity_filter
+            ]
+
         return _ok(
             {
                 "sites": site_stats,
                 "benches": bench_stats,
                 "servers": server_stats,
+                "recent_activity": activities,
             }
         )
     except Exception:
         frappe.log_error("mobile_api.dashboard", frappe.get_traceback())
         return _err("Failed to load dashboard.")
+
+
+def _normalise_activity_status(raw):
+    """Map various cloud status strings to Success / Failed / Running / Pending."""
+    raw_lower = raw.lower() if raw else ""
+    if raw_lower in ("success", "completed", "active", "running successfully"):
+        return "Success"
+    if raw_lower in ("failure", "failed", "error", "broken", "undelivered"):
+        return "Failed"
+    if raw_lower in ("running", "in progress", "pending installation"):
+        return "Running"
+    return "Pending"
 
 
 # =========================================================================== #
