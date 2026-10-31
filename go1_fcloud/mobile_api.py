@@ -1355,7 +1355,15 @@ def setup_site_redirect(token=None):
             )
             return
 
-        result = unwrap(cloud_post("press.api.site.login", {"name": site_name}))
+        # Token already validated (created by an authenticated user).
+        # Switch to Administrator so cloud_post can read the
+        # Go1 FCloud Configuration credentials (Guest cannot).
+        original_user = frappe.session.user
+        try:
+            frappe.set_user("Administrator")
+            result = unwrap(cloud_post("press.api.site.login", {"name": site_name}))
+        finally:
+            frappe.set_user(original_user)
 
         if isinstance(result, dict) and result.get("sid"):
             sid = result["sid"]
