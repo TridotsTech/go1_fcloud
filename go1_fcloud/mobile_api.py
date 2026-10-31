@@ -2075,29 +2075,71 @@ def deploy_bench(name, apps=None, sites=None):
         if info.get("deploy_in_progress"):
             return _err("A deploy is already in progress for this bench.")
 
-        # Press only needs apps that are being updated — pass them through
-        # directly.  When no apps are specified, pick every app that
-        # deploy_information reports as having an update.
+        # Build apps payload — enrich user-provided apps with missing
+        # fields (source, hash) from deploy_information when needed.
         all_apps = info.get("apps", [])
+        info_app_map = {a.get("app"): a for a in all_apps}
 
         if apps:
-            apps_to_deploy = apps
+            apps_to_deploy = []
+            for ua in apps:
+                ia = info_app_map.get(ua.get("app"), {})
+                apps_to_deploy.append({
+                    "app": ua.get("app", ""),
+                    "source": ua.get("source") or ia.get("source", ""),
+                    "release": ua.get("release") or ia.get("next_release", ""),
+                    "hash": ua.get("hash") or ia.get("next_hash", ""),
+                })
         else:
-            apps_to_deploy = [a for a in all_apps if a.get("update_available")]
+            apps_to_deploy = [
+                {
+                    "app": a.get("app", ""),
+                    "source": a.get("source", ""),
+                    "release": a.get("next_release", ""),
+                    "hash": a.get("next_hash", ""),
+                }
+                for a in all_apps
+                if a.get("update_available")
+            ]
 
-        has_updates = any(a.get("update_available") for a in apps_to_deploy)
-        if not has_updates:
+        if not apps_to_deploy:
             return _err("No updates available to deploy.")
 
-        # If sites provided, use deploy_and_update to deploy + update sites
+        # Build sites payload — enrich user-provided sites with server
+        # and bench from deploy_information so Press can match them.
         if sites:
+            info_sites = info.get("sites", [])
+            info_site_map = {s.get("name"): s for s in info_sites}
+
+            sites_to_update = []
+            for us in sites:
+                site_name = us.get("name", "")
+                is_ = info_site_map.get(site_name, {})
+                sites_to_update.append({
+                    "name": site_name,
+                    "server": us.get("server") or is_.get("server", ""),
+                    "bench": us.get("bench") or is_.get("bench", ""),
+                    "skip_failing_patches": us.get("skip_failing_patches", False),
+                    "skip_backups": us.get("skip_backups", False),
+                })
+
             result = cloud_post(
                 "press.api.bench.deploy_and_update",
-                {"name": bench_id, "apps": apps_to_deploy, "sites": sites},
+                {
+                    "name": bench_id,
+                    "apps": apps_to_deploy,
+                    "sites": sites_to_update,
+                    "run_will_fail_check": True,
+                },
             )
         else:
             result = cloud_post(
-                "press.api.bench.deploy", {"name": bench_id, "apps": apps_to_deploy}
+                "press.api.bench.deploy",
+                {
+                    "name": bench_id,
+                    "apps": apps_to_deploy,
+                    "run_will_fail_check": True,
+                },
             )
 
         candidate = unwrap(result)
