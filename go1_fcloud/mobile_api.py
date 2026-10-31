@@ -2212,31 +2212,39 @@ def get_bench_deploy_info(name):
 
 
 @frappe.whitelist()
-def get_bench_deploys(name):
+def get_bench_deploys(name, start=0, limit=20):
     """
     Return deploy history for a bench including failed deploys.
 
-    Uses press.api.bench.candidates to fetch all deploy candidates
-    (Active, Failure, Running, etc.) instead of just active versions.
+    Fetches Release Pipeline records via press.api.client.get_list
+    with pagination support.
 
     Args:
-      name:  Go1 FCloud Bench doc name or Frappe Cloud bench ID
+      name:   Go1 FCloud Bench doc name or Frappe Cloud bench ID
+      start:  Pagination offset (default 0)
+      limit:  Page size (default 20)
     """
     try:
         _require_role()
         doc, bench_id = _resolve_bench(name)
 
-        # Fetch all deploy candidates (includes Failure, Active, etc.)
-        candidates = (
+        start = frappe.utils.cint(start)
+        limit = frappe.utils.cint(limit) or 20
+
+        # Fetch deploy pipelines (includes Success, Failure, Running, etc.)
+        pipelines = (
             unwrap(
                 cloud_post(
                     "press.api.client.get_list",
                     {
-                        "doctype": "Deploy Candidate",
-                        "filters": {"group": bench_id},
-                        "fields": ["name", "status", "creation"],
+                        "doctype": "Release Pipeline",
+                        "filters": {"release_group": bench_id},
+                        "fields": ["name", "status", "creation", "owner"],
                         "order_by": "creation desc",
-                        "limit_page_length": 20,
+                        "start": start,
+                        "limit": limit,
+                        "limit_start": start,
+                        "limit_page_length": limit,
                     },
                 )
             )
@@ -2254,13 +2262,12 @@ def get_bench_deploys(name):
         )
 
         deploys = []
-        for c in candidates:
+        for p in pipelines:
             deploys.append({
-                "name": c.get("name", ""),
-                "status": c.get("status", ""),
-                "creation": c.get("creation", ""),
-                "apps": c.get("apps", []),
-                "sites": c.get("sites", []),
+                "name": p.get("name", ""),
+                "status": p.get("status", ""),
+                "creation": p.get("creation", ""),
+                "owner": p.get("owner", ""),
             })
 
         return _ok({
@@ -2269,6 +2276,8 @@ def get_bench_deploys(name):
             "update_available": any(
                 a.get("update_available") for a in deploy_info.get("apps", [])
             ),
+            "start": start,
+            "limit": limit,
         })
     except frappe.ValidationError as e:
         return _err(str(e))
