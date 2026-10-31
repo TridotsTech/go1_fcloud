@@ -2075,74 +2075,15 @@ def deploy_bench(name, apps=None, sites=None):
         if info.get("deploy_in_progress"):
             return _err("A deploy is already in progress for this bench.")
 
-        # Build full apps list — deploy requires ALL apps with a release
+        # Press only needs apps that are being updated — pass them through
+        # directly.  When no apps are specified, pick every app that
+        # deploy_information reports as having an update.
         all_apps = info.get("apps", [])
-        app_info_map = {a.get("app"): a for a in all_apps}
 
         if apps:
-            # User provided specific apps to update — merge with full list
-            user_apps = {a.get("app"): a for a in apps}
-            apps_to_deploy = []
-            for info_app in all_apps:
-                app_name = info_app.get("app", "")
-                user_app = user_apps.get(app_name)
-                if user_app:
-                    # User selected this app for update — use their release
-                    release = (user_app.get("release")
-                               or info_app.get("next_release")
-                               or info_app.get("release", ""))
-                    hash_val = (user_app.get("hash")
-                                or info_app.get("next_hash")
-                                or info_app.get("hash", ""))
-                    if not release:
-                        continue
-                    apps_to_deploy.append({
-                        "app": app_name,
-                        "source": user_app.get("source") or info_app.get("source", ""),
-                        "release": release,
-                        "hash": hash_val,
-                        "update_available": True,
-                    })
-                else:
-                    # Not selected — keep current/best available release
-                    release = (info_app.get("current_release")
-                               or info_app.get("next_release")
-                               or info_app.get("release", ""))
-                    hash_val = (info_app.get("current_hash")
-                                or info_app.get("next_hash")
-                                or info_app.get("hash", ""))
-                    if not release:
-                        continue
-                    apps_to_deploy.append({
-                        "app": app_name,
-                        "source": info_app.get("source", ""),
-                        "release": release,
-                        "hash": hash_val,
-                        "update_available": False,
-                    })
+            apps_to_deploy = apps
         else:
-            # No specific apps — normalise all apps so "release" key is always present
-            apps_to_deploy = []
-            for info_app in all_apps:
-                if info_app.get("update_available"):
-                    release = info_app.get("next_release") or info_app.get("release", "")
-                    hash_val = info_app.get("next_hash") or info_app.get("hash", "")
-                else:
-                    release = (info_app.get("current_release")
-                               or info_app.get("next_release")
-                               or info_app.get("release", ""))
-                    hash_val = (info_app.get("current_hash")
-                                or info_app.get("next_hash")
-                                or info_app.get("hash", ""))
-                if not release:
-                    continue
-                apps_to_deploy.append({
-                    "app": info_app.get("app", ""),
-                    "source": info_app.get("source", ""),
-                    "release": release,
-                    "hash": hash_val,
-                    "update_available": info_app.get("update_available", False),
-                })
+            apps_to_deploy = [a for a in all_apps if a.get("update_available")]
 
         has_updates = any(a.get("update_available") for a in apps_to_deploy)
         if not has_updates:
