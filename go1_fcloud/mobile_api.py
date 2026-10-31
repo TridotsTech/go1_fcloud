@@ -2075,35 +2075,36 @@ def deploy_bench(name, apps=None, sites=None):
         if info.get("deploy_in_progress"):
             return _err("A deploy is already in progress for this bench.")
 
-        # Build apps payload — enrich user-provided apps with missing
-        # fields (source, hash) from deploy_information when needed.
+        # Press requires ALL apps on the bench in the payload, each with
+        # a valid release.  Build the full list from deploy_information,
+        # overriding the release for apps the user selected to update.
         all_apps = info.get("apps", [])
-        info_app_map = {a.get("app"): a for a in all_apps}
+        user_app_map = {a.get("app"): a for a in apps} if apps else {}
 
-        if apps:
-            apps_to_deploy = []
-            for ua in apps:
-                ia = info_app_map.get(ua.get("app"), {})
-                # Always prefer source/hash from deploy_information —
-                # the mobile app sends a branch name (e.g. "main") for
-                # source, but Press needs a Source doc ID (e.g. "SRC-crm-001").
-                apps_to_deploy.append({
-                    "app": ua.get("app", ""),
-                    "source": ia.get("source", "") or ua.get("source", ""),
-                    "release": ua.get("release") or ia.get("next_release", ""),
-                    "hash": ia.get("next_hash", "") or ua.get("hash", ""),
-                })
-        else:
-            apps_to_deploy = [
-                {
-                    "app": a.get("app", ""),
-                    "source": a.get("source", ""),
-                    "release": a.get("next_release", ""),
-                    "hash": a.get("next_hash", ""),
-                }
-                for a in all_apps
-                if a.get("update_available")
-            ]
+        apps_to_deploy = []
+        for ia in all_apps:
+            app_name = ia.get("app", "")
+            ua = user_app_map.get(app_name)
+
+            if ua:
+                # User selected this app — use their release
+                release = ua.get("release") or ia.get("next_release", "")
+                hash_val = ia.get("next_hash", "") or ua.get("hash", "")
+            else:
+                # Not selected — keep current; fall back to next for
+                # newly added apps that have no current release yet.
+                release = ia.get("current_release") or ia.get("next_release", "")
+                hash_val = ia.get("current_hash") or ia.get("next_hash", "")
+
+            if not release:
+                continue
+
+            apps_to_deploy.append({
+                "app": app_name,
+                "source": ia.get("source", ""),
+                "release": release,
+                "hash": hash_val,
+            })
 
         if not apps_to_deploy:
             return _err("No updates available to deploy.")
