@@ -2075,9 +2075,11 @@ def deploy_bench(name, apps=None, sites=None):
         if info.get("deploy_in_progress"):
             return _err("A deploy is already in progress for this bench.")
 
-        # Press requires ALL apps on the bench in the payload, each with
-        # a valid release.  Build the full list from deploy_information,
-        # overriding the release for apps the user selected to update.
+        # Press validate_app_hashes requires EVERY app to have both
+        # "release" and "hash".  deploy_information returns each app's
+        # releases list (with name + hash per entry) and current_hash /
+        # current_release for the deployed version.  We must look up the
+        # hash from the releases list when a specific release is chosen.
         all_apps = info.get("apps", [])
         user_app_map = {a.get("app"): a for a in apps} if apps else {}
 
@@ -2086,17 +2088,32 @@ def deploy_bench(name, apps=None, sites=None):
             app_name = ia.get("app", "")
             ua = user_app_map.get(app_name)
 
+            # Build a release-name → hash lookup from the releases list
+            releases = ia.get("releases") or []
+            release_hash_map = {
+                r.get("name"): r.get("hash", "")
+                for r in releases
+                if r.get("name")
+            }
+
             if ua:
                 # User selected this app — use their release
                 release = ua.get("release") or ia.get("next_release", "")
-                hash_val = ia.get("next_hash", "") or ua.get("hash", "")
+                hash_val = (
+                    ua.get("hash")
+                    or release_hash_map.get(release, "")
+                    or ia.get("current_hash", "")
+                )
             else:
                 # Not selected — keep current; fall back to next for
                 # newly added apps that have no current release yet.
                 release = ia.get("current_release") or ia.get("next_release", "")
-                hash_val = ia.get("current_hash") or ia.get("next_hash", "")
+                hash_val = (
+                    ia.get("current_hash")
+                    or release_hash_map.get(release, "")
+                )
 
-            if not release:
+            if not release or not hash_val:
                 continue
 
             apps_to_deploy.append({
@@ -2190,11 +2207,17 @@ def get_bench_deploy_info(name):
                     "repository": app.get("repository", ""),
                     "repository_owner": app.get("repository_owner", ""),
                     "current_hash": app.get("current_hash", ""),
-                    "next_hash": app.get("next_hash", ""),
                     "current_tag": app.get("current_tag", ""),
-                    "next_tag": app.get("next_tag", ""),
                     "current_release": app.get("current_release", ""),
                     "next_release": app.get("next_release", ""),
+                    "releases": [
+                        {
+                            "name": r.get("name", ""),
+                            "hash": r.get("hash", ""),
+                            "tag": r.get("tag", ""),
+                        }
+                        for r in (app.get("releases") or [])
+                    ],
                     "update_available": app.get("update_available", False),
                     "will_branch_change": app.get("will_branch_change", False),
                 }
