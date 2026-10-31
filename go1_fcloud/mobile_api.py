@@ -91,6 +91,33 @@ def _resolve_bench(name):
     return None, name
 
 
+def _fetch_deploy_information(bench_id):
+    """Fetch deploy information for a Release Group from Press.
+
+    Tries the direct ``press.api.bench.deploy_information`` endpoint first.
+    If that fails with a permission error (the ``@protected`` decorator
+    checks team ownership), falls back to
+    ``press.api.client.run_doc_method`` which uses role-based access
+    and may succeed for support / system users.
+    """
+    try:
+        return unwrap(
+            cloud_post("press.api.bench.deploy_information", {"name": bench_id})
+        )
+    except Exception:
+        # Fallback: run_doc_method uses different permission checks
+        return unwrap(
+            cloud_post(
+                "press.api.client.run_doc_method",
+                {
+                    "dt": "Release Group",
+                    "dn": bench_id,
+                    "method": "deploy_information",
+                },
+            )
+        )
+
+
 # =========================================================================== #
 #  DASHBOARD
 # =========================================================================== #
@@ -1694,14 +1721,7 @@ def get_bench(name):
         ]
 
         # Check if updates are available
-        deploy_info = (
-            unwrap(
-                cloud_post(
-                    "press.api.bench.deploy_information", {"name": bench_id}
-                )
-            )
-            or {}
-        )
+        deploy_info = _fetch_deploy_information(bench_id) or {}
         update_available = deploy_info.get("update_available", False)
 
         # Fetch deployed versions
@@ -1809,9 +1829,7 @@ def bench_action(name, action, extra=None):
             return _ok(unwrap(result))
 
         elif action == "deploy_check":
-            info = unwrap(
-                cloud_post("press.api.bench.deploy_information", {"name": bench_id})
-            )
+            info = _fetch_deploy_information(bench_id)
             return _ok(info)
 
         elif action == "remove_app":
@@ -2066,9 +2084,7 @@ def deploy_bench(name, apps=None, sites=None):
             sites = frappe.parse_json(sites)
 
         # Get deploy information (apps with pending updates)
-        info = unwrap(
-            cloud_post("press.api.bench.deploy_information", {"name": bench_id})
-        )
+        info = _fetch_deploy_information(bench_id)
         if not info:
             return _err("Could not fetch deploy information.")
 
@@ -2187,14 +2203,7 @@ def get_bench_deploy_info(name):
         _require_role()
         doc, bench_id = _resolve_bench(name)
 
-        info = (
-            unwrap(
-                cloud_post(
-                    "press.api.bench.deploy_information", {"name": bench_id}
-                )
-            )
-            or {}
-        )
+        info = _fetch_deploy_information(bench_id) or {}
 
         apps = []
         for app in info.get("apps", []):
@@ -2285,14 +2294,7 @@ def get_bench_deploys(name, start=0, limit=20):
         )
 
         # Fetch current deploy information
-        deploy_info = (
-            unwrap(
-                cloud_post(
-                    "press.api.bench.deploy_information", {"name": bench_id}
-                )
-            )
-            or {}
-        )
+        deploy_info = _fetch_deploy_information(bench_id) or {}
 
         deploys = []
         for p in pipelines:
