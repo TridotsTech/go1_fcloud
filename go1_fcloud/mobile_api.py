@@ -2229,14 +2229,7 @@ def get_bench_deploys(name):
         # Fetch all deploy candidates (includes Failure, Active, etc.)
         candidates = (
             unwrap(
-                cloud_post(
-                    "press.api.bench.candidates",
-                    {
-                        "filters": {"group": bench_id},
-                        "order_by": "creation desc",
-                        "limit_page_length": 20,
-                    },
-                )
+                cloud_post("press.api.bench.candidates", {"name": bench_id})
             )
             or []
         )
