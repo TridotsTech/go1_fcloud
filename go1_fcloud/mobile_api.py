@@ -2088,20 +2088,36 @@ def deploy_bench(name, apps=None, sites=None):
                 user_app = user_apps.get(app_name)
                 if user_app:
                     # User selected this app for update — use their release
+                    release = (user_app.get("release")
+                               or info_app.get("next_release")
+                               or info_app.get("release", ""))
+                    hash_val = (user_app.get("hash")
+                                or info_app.get("next_hash")
+                                or info_app.get("hash", ""))
+                    if not release:
+                        continue
                     apps_to_deploy.append({
                         "app": app_name,
                         "source": user_app.get("source") or info_app.get("source", ""),
-                        "release": user_app.get("release") or info_app.get("next_release") or info_app.get("release", ""),
-                        "hash": user_app.get("hash") or info_app.get("next_hash") or info_app.get("hash", ""),
+                        "release": release,
+                        "hash": hash_val,
                         "update_available": True,
                     })
                 else:
-                    # Not selected — keep current release (deploy API needs "release" key)
+                    # Not selected — keep current/best available release
+                    release = (info_app.get("current_release")
+                               or info_app.get("next_release")
+                               or info_app.get("release", ""))
+                    hash_val = (info_app.get("current_hash")
+                                or info_app.get("next_hash")
+                                or info_app.get("hash", ""))
+                    if not release:
+                        continue
                     apps_to_deploy.append({
                         "app": app_name,
                         "source": info_app.get("source", ""),
-                        "release": info_app.get("current_release") or info_app.get("release", ""),
-                        "hash": info_app.get("current_hash") or info_app.get("hash", ""),
+                        "release": release,
+                        "hash": hash_val,
                         "update_available": False,
                     })
         else:
@@ -2112,8 +2128,14 @@ def deploy_bench(name, apps=None, sites=None):
                     release = info_app.get("next_release") or info_app.get("release", "")
                     hash_val = info_app.get("next_hash") or info_app.get("hash", "")
                 else:
-                    release = info_app.get("current_release") or info_app.get("release", "")
-                    hash_val = info_app.get("current_hash") or info_app.get("hash", "")
+                    release = (info_app.get("current_release")
+                               or info_app.get("next_release")
+                               or info_app.get("release", ""))
+                    hash_val = (info_app.get("current_hash")
+                                or info_app.get("next_hash")
+                                or info_app.get("hash", ""))
+                if not release:
+                    continue
                 apps_to_deploy.append({
                     "app": info_app.get("app", ""),
                     "source": info_app.get("source", ""),
