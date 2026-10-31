@@ -1449,8 +1449,24 @@ def get_benches(status_filter=None, search=None, server=None):
     try:
         _require_role()
 
+        # Fetch benches with computed status from bench.all
+        # (status is a virtual field not returned by get_list)
+        all_benches_status = (
+            unwrap(
+                cloud_post(
+                    "press.api.bench.all",
+                    {"bench_filter": {"status": "All", "tag": ""}},
+                )
+            )
+            or []
+        )
+        status_map = {
+            b.get("name", ""): b.get("status", "")
+            for b in all_benches_status
+        }
+
         # Use press.api.client.get_list with Release Group doctype
-        # to support server-side server filtering.
+        # for detailed nested fields (apps, servers) and server-side filtering.
         filters = {}
         if server:
             filters["server"] = server
@@ -1469,7 +1485,6 @@ def get_benches(status_filter=None, search=None, server=None):
                             "active_benches",
                             "version",
                             "creation",
-                            "status",
                             "site_count",
                         ],
                         "filters": filters,
@@ -1498,9 +1513,10 @@ def get_benches(status_filter=None, search=None, server=None):
                     servers.add(srv)
 
         # Count statuses across all benches (before status/search filtering)
+        # Use status_map (from bench.all) since get_list doesn't return computed status
         status_counts = {}
         for b in cloud_benches:
-            st = b.get("status", "")
+            st = status_map.get(b.get("name", ""), "")
             status_counts[st] = status_counts.get(st, 0) + 1
 
         total = len(cloud_benches)
@@ -1512,7 +1528,7 @@ def get_benches(status_filter=None, search=None, server=None):
         for b in cloud_benches:
             bench_id = b.get("name", "")
             title = b.get("title", "")
-            status = b.get("status", "")
+            status = status_map.get(bench_id, "")
 
             if status_filter and status != status_filter:
                 continue
