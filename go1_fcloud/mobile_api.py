@@ -2084,11 +2084,14 @@ def deploy_bench(name, apps=None, sites=None):
             apps_to_deploy = []
             for ua in apps:
                 ia = info_app_map.get(ua.get("app"), {})
+                # Always prefer source/hash from deploy_information —
+                # the mobile app sends a branch name (e.g. "main") for
+                # source, but Press needs a Source doc ID (e.g. "SRC-crm-001").
                 apps_to_deploy.append({
                     "app": ua.get("app", ""),
-                    "source": ua.get("source") or ia.get("source", ""),
+                    "source": ia.get("source", "") or ua.get("source", ""),
                     "release": ua.get("release") or ia.get("next_release", ""),
-                    "hash": ua.get("hash") or ia.get("next_hash", ""),
+                    "hash": ia.get("next_hash", "") or ua.get("hash", ""),
                 })
         else:
             apps_to_deploy = [
@@ -2181,6 +2184,7 @@ def get_bench_deploy_info(name):
                 {
                     "name": app.get("app", ""),
                     "title": app.get("title", ""),
+                    "source": app.get("source", ""),
                     "branch": app.get("branch", ""),
                     "repository": app.get("repository", ""),
                     "repository_owner": app.get("repository_owner", ""),
