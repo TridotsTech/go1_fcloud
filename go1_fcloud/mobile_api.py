@@ -2082,17 +2082,37 @@ def deploy_bench(name, apps=None, sites=None):
                     # User selected this app for update — use their release
                     apps_to_deploy.append({
                         "app": app_name,
-                        "release": user_app.get("release") or info_app.get("release", ""),
-                        "hash": user_app.get("hash") or info_app.get("hash", ""),
                         "source": user_app.get("source") or info_app.get("source", ""),
+                        "release": user_app.get("release") or info_app.get("next_release") or info_app.get("release", ""),
+                        "hash": user_app.get("hash") or info_app.get("next_hash") or info_app.get("hash", ""),
                         "update_available": True,
                     })
                 else:
-                    # Not selected — keep current release
-                    apps_to_deploy.append(info_app)
+                    # Not selected — keep current release (deploy API needs "release" key)
+                    apps_to_deploy.append({
+                        "app": app_name,
+                        "source": info_app.get("source", ""),
+                        "release": info_app.get("current_release") or info_app.get("release", ""),
+                        "hash": info_app.get("current_hash") or info_app.get("hash", ""),
+                        "update_available": False,
+                    })
         else:
-            # No specific apps — send all apps (those with updates will deploy)
-            apps_to_deploy = all_apps
+            # No specific apps — normalise all apps so "release" key is always present
+            apps_to_deploy = []
+            for info_app in all_apps:
+                if info_app.get("update_available"):
+                    release = info_app.get("next_release") or info_app.get("release", "")
+                    hash_val = info_app.get("next_hash") or info_app.get("hash", "")
+                else:
+                    release = info_app.get("current_release") or info_app.get("release", "")
+                    hash_val = info_app.get("current_hash") or info_app.get("hash", "")
+                apps_to_deploy.append({
+                    "app": info_app.get("app", ""),
+                    "source": info_app.get("source", ""),
+                    "release": release,
+                    "hash": hash_val,
+                    "update_available": info_app.get("update_available", False),
+                })
 
         has_updates = any(a.get("update_available") for a in apps_to_deploy)
         if not has_updates:
