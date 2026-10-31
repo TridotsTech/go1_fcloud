@@ -1274,11 +1274,12 @@ def site_login(site_name, reason=None):
 @frappe.whitelist()
 def setup_site(site_name):
     """
-    Return a one-time login URL that opens the site's setup wizard.
+    Return a one-time redirect URL that opens the site's setup wizard.
 
-    The setup wizard will mark itself complete when the user finishes it
-    in the browser. We do NOT call setup_wizard_complete here because
-    that restarts the site and invalidates the login session.
+    Instead of returning a SID directly (which can expire before the
+    mobile browser loads it), we generate a short-lived token and cache
+    the site name.  The returned URL points to ``setup_site_redirect``
+    which fetches a **fresh** SID at the moment the browser hits it.
 
     Args:
       site_name: Go1 FCloud Site doc name or Frappe Cloud site name
@@ -1287,38 +1288,112 @@ def setup_site(site_name):
         _require_role()
         cloud_name = _resolve_site(site_name)
 
-        result = unwrap(cloud_post("press.api.site.login", {"name": cloud_name}))
+        token = frappe.generate_hash(length=32)
+        frappe.cache().set_value(
+            f"setup_token:{token}",
+            {"site": cloud_name},
+            expires_in_sec=300,  # 5 minutes
+        )
 
-        # Handle both dict {"sid": "...", "site": "..."} and string responses
-        if isinstance(result, dict) and result.get("sid"):
-            sid = result["sid"]
-            site_host = result.get("site", cloud_name)
-        elif isinstance(result, str) and result:
-            # Response may be the sid directly or a full login URL
-            if result.startswith("http"):
-                return _ok({
-                    "login_url": result,
-                    "setup_wizard_url": f"{result}&redirect-to=/setup-wizard" if "?" in result else f"{result}?redirect-to=/setup-wizard",
-                })
-            sid = result
-            site_host = cloud_name
-        else:
-            return _err("Failed to generate login session for the site.")
-
-        login_url = f"https://{site_host}/api/method/login?sid={sid}"
-        setup_wizard_url = f"https://{site_host}/api/method/login?sid={sid}&redirect-to=/setup-wizard"
+        redirect_url = (
+            f"{frappe.utils.get_url()}/api/method/"
+            f"go1_fcloud.mobile_api.setup_site_redirect?token={token}"
+        )
 
         return _ok({
-            "login_url": login_url,
-            "setup_wizard_url": setup_wizard_url,
-            "sid": sid,
-            "site": site_host,
+            "setup_wizard_url": redirect_url,
         })
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
         frappe.log_error("mobile_api.setup_site", frappe.get_traceback())
         return _err("Failed to generate setup wizard URL.")
+
+
+@frappe.whitelist(allow_guest=True)
+def setup_site_redirect(token=None):
+    """
+    Browser-facing redirect endpoint.
+
+    Reads the cached site name for *token*, fetches a fresh SID via
+    ``press.api.site.login``, and 302-redirects the browser to the
+    site's setup wizard with that SID.
+    """
+    try:
+        if not token:
+            frappe.respond_as_web_page(
+                "Invalid Link",
+                "No token was provided. Please request a new setup link from the app.",
+                http_status_code=400,
+                indicator_color="red",
+            )
+            return
+
+        cache_key = f"setup_token:{token}"
+        data = frappe.cache().get_value(cache_key)
+
+        if not data:
+            frappe.respond_as_web_page(
+                "Link Expired",
+                "This setup link has already been used or has expired. "
+                "Please request a new one from the app.",
+                http_status_code=410,
+                indicator_color="orange",
+            )
+            return
+
+        # Single-use: delete immediately
+        frappe.cache().delete_value(cache_key)
+
+        site_name = data.get("site")
+        if not site_name:
+            frappe.respond_as_web_page(
+                "Invalid Link",
+                "The setup link is malformed. Please request a new one from the app.",
+                http_status_code=400,
+                indicator_color="red",
+            )
+            return
+
+        result = unwrap(cloud_post("press.api.site.login", {"name": site_name}))
+
+        if isinstance(result, dict) and result.get("sid"):
+            sid = result["sid"]
+            site_host = result.get("site", site_name)
+        elif isinstance(result, str) and result:
+            if result.startswith("http"):
+                location = (
+                    f"{result}&redirect-to=/setup-wizard"
+                    if "?" in result
+                    else f"{result}?redirect-to=/setup-wizard"
+                )
+                frappe.local.response["type"] = "redirect"
+                frappe.local.response["location"] = location
+                return
+            sid = result
+            site_host = site_name
+        else:
+            frappe.respond_as_web_page(
+                "Login Failed",
+                "Could not create a login session for the site. Please try again.",
+                http_status_code=502,
+                indicator_color="red",
+            )
+            return
+
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = (
+            f"https://{site_host}/api/method/login?sid={sid}"
+            f"&redirect-to=/setup-wizard"
+        )
+    except Exception:
+        frappe.log_error("mobile_api.setup_site_redirect", frappe.get_traceback())
+        frappe.respond_as_web_page(
+            "Something Went Wrong",
+            "An unexpected error occurred. Please request a new setup link from the app.",
+            http_status_code=500,
+            indicator_color="red",
+        )
 
 
 @frappe.whitelist()
