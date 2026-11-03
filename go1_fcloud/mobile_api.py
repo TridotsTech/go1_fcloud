@@ -3355,21 +3355,29 @@ def get_github_repositories(installation, owner):
     """
     Return repositories accessible via a GitHub App installation.
 
+    Extracts repos from the press.api.github.options response by matching
+    the given installation ID and owner. No separate API call needed — the
+    installations response already contains the repos list.
+
     Args:
       installation:  GitHub App installation ID (from get_github_installations)
-      owner:         GitHub org / user login (e.g. "TridotsTech")
+      owner:         GitHub org / user login (e.g. "pra17shant")
 
-    Endpoint: press.api.github.repository
+    Returns:
+      { "success": true, "data": [ { "id": ..., "name": ..., "private": ..., ... }, ... ] }
     """
     try:
         _require_role()
-        result = unwrap(
-            cloud_post(
-                "press.api.github.repository",
-                {"installation": installation, "owner": owner},
-            )
-        )
-        return _ok(result)
+        installation = int(installation) if installation else None
+        installations = unwrap(cloud_get("press.api.github.options")) or []
+
+        for inst in installations:
+            inst_id = inst.get("id")
+            inst_login = inst.get("login", "")
+            if inst_id == installation or inst_login == owner:
+                return _ok(inst.get("repos", []))
+
+        return _ok([])
     except frappe.ValidationError as e:
         frappe.clear_messages()
         error_msg = str(e)
