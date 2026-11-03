@@ -580,122 +580,171 @@ def sync_site():
     """
     from go1_fcloud.utils import cloud_post, cloud_get, unwrap
 
+    # ----- Step 1: Fetch cloud sites (critical — abort if this fails) -----
     try:
         cloud_sites = unwrap(cloud_post("press.api.site.all")) or []
-        site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
-        shared_options = unwrap(cloud_post("press.api.site.get_new_site_options")) or []
-        bench_list = unwrap(cloud_post("press.api.bench.all")) or []
+    except Exception:
+        frappe.log_error("sync_site:fetch_cloud_sites", frappe.get_traceback())
+        return
 
+    # ----- Step 2: Fetch supplementary data (non-critical) -----
+    site_plans = []
+    shared_options = []
+    bench_list = []
+    try:
+        site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
+    except Exception:
+        frappe.log_error("sync_site:fetch_plans", frappe.get_traceback())
+    try:
+        shared_options = unwrap(cloud_post("press.api.site.get_new_site_options")) or []
+    except Exception:
+        frappe.log_error("sync_site:fetch_options", frappe.get_traceback())
+    try:
+        bench_list = unwrap(cloud_post("press.api.bench.all")) or []
+    except Exception:
+        frappe.log_error("sync_site:fetch_benches", frappe.get_traceback())
+
+    # ----- Step 3: Create / update local docs -----
+    try:
         local_sites = frappe.get_all(
             "Go1 FCloud Site", filters={"is_dropped": 0}, fields=["url", "name"]
         )
-        local_by_url = {s["url"]: s["name"] for s in local_sites}
+        local_by_url = {
+            s["url"]: s["name"] for s in local_sites if s.get("url")
+        }
 
         for site in cloud_sites:
             site_name = site.get("name", "")
+            if not site_name:
+                continue
 
             if site_name in local_by_url:
                 # Update status and key fields for existing sites
-                local_name = local_by_url[site_name]
-                doc = frappe.get_doc("Go1 FCloud Site", local_name)
+                try:
+                    local_name = local_by_url[site_name]
+                    doc = frappe.get_doc("Go1 FCloud Site", local_name)
+                    doc.site_name = site_name
+                    doc.status = site.get("status", "")
+                    doc.version = site.get("version", "")
+                    doc.region = site.get("cluster", "")
+                    plan = site.get("plan")
+                    if plan:
+                        doc.plan = (
+                            f"{plan.get('name','')} - INR {int(plan.get('price_inr', 0))}"
+                        )
+                    doc.save(ignore_permissions=True)
+                    frappe.db.commit()
+                except Exception:
+                    frappe.log_error(
+                        f"sync_site:update:{site_name}", frappe.get_traceback()
+                    )
+                continue
+
+            try:
+                doc = frappe.new_doc("Go1 FCloud Site")
                 doc.site_name = site_name
                 doc.status = site.get("status", "")
-                doc.version = site.get("version", "")
                 doc.region = site.get("cluster", "")
+                doc.version = site.get("version", "")
+                doc.url = site_name
+                doc.group = site.get("group", "")
+                doc.plans = json.dumps(site_plans)
+                doc.bench_data = json.dumps(bench_list)
+                doc.site_data = json.dumps(shared_options)
+
                 plan = site.get("plan")
                 if plan:
                     doc.plan = (
                         f"{plan.get('name','')} - INR {int(plan.get('price_inr', 0))}"
                     )
-                doc.save(ignore_permissions=True)
-                frappe.db.commit()
-                continue
 
-            doc = frappe.new_doc("Go1 FCloud Site")
-            doc.site_name = site_name
-            doc.status = site.get("status", "")
-            doc.region = site.get("cluster", "")
-            doc.version = site.get("version", "")
-            doc.url = site_name
-            doc.group = site.get("group", "")
-            doc.plans = json.dumps(site_plans)
-            doc.bench_data = json.dumps(bench_list)
-            doc.site_data = json.dumps(shared_options)
+                # Private bench site
+                title = site.get("title", "")
+                version = site.get("version", "")
+                if title and title != version:
+                    bench_doc_name = frappe.db.get_value(
+                        "Go1 FCloud Bench", {"bench": title}, "name"
+                    )
+                    if bench_doc_name:
+                        doc.bench_name = bench_doc_name
+                    doc.bench = title
 
-            plan = site.get("plan")
-            if plan:
-                doc.plan = (
-                    f"{plan.get('name','')} - INR {int(plan.get('price_inr', 0))}"
-                )
-
-            # Private bench site
-            title = site.get("title", "")
-            version = site.get("version", "")
-            if title and title != version:
-                bench_doc_name = frappe.db.get_value(
-                    "Go1 FCloud Bench", {"bench": title}, "name"
-                )
-                if bench_doc_name:
-                    doc.bench_name = bench_doc_name
-                doc.bench = title
-
-                # Apps
-                bench_apps = (
-                    unwrap(
-                        cloud_post(
-                            "press.api.bench.apps", {"name": site.get("group", "")}
+                    # Apps
+                    bench_apps = (
+                        unwrap(
+                            cloud_post(
+                                "press.api.bench.apps",
+                                {"name": site.get("group", "")},
+                            )
                         )
+                        or []
                     )
-                    or []
-                )
-                site_apps = (
-                    unwrap(
-                        cloud_post("press.api.site.installed_apps", {"name": site_name})
-                    )
-                    or []
-                )
-
-                for a in bench_apps:
-                    doc.append("installed", {"app_name": a.get("name", "")})
-                for a in site_apps:
-                    doc.append(
-                        "custom",
-                        {
-                            "app_name": a.get("app", ""),
-                            "title": a.get("repository", ""),
-                        },
-                    )
-            else:
-                doc.new_apps = json.dumps(shared_options)
-                site_apps = (
-                    unwrap(
-                        cloud_post("press.api.site.installed_apps", {"name": site_name})
-                    )
-                    or []
-                )
-                for a in site_apps:
-                    doc.append(
-                        "custom",
-                        {
-                            "app_name": a.get("repository", ""),
-                            "title": a.get("app", ""),
-                        },
+                    site_apps = (
+                        unwrap(
+                            cloud_post(
+                                "press.api.site.installed_apps",
+                                {"name": site_name},
+                            )
+                        )
+                        or []
                     )
 
-            doc.insert(ignore_permissions=True)
-            frappe.db.commit()
+                    for a in bench_apps:
+                        doc.append("installed", {"app_name": a.get("name", "")})
+                    for a in site_apps:
+                        doc.append(
+                            "custom",
+                            {
+                                "app_name": a.get("app", ""),
+                                "title": a.get("repository", ""),
+                            },
+                        )
+                else:
+                    doc.new_apps = json.dumps(shared_options)
+                    site_apps = (
+                        unwrap(
+                            cloud_post(
+                                "press.api.site.installed_apps",
+                                {"name": site_name},
+                            )
+                        )
+                        or []
+                    )
+                    for a in site_apps:
+                        doc.append(
+                            "custom",
+                            {
+                                "app_name": a.get("repository", ""),
+                                "title": a.get("app", ""),
+                            },
+                        )
 
-        # Mark local sites that no longer exist on Frappe Cloud as dropped
+                doc.insert(ignore_permissions=True)
+                frappe.db.commit()
+            except Exception:
+                frappe.log_error(
+                    f"sync_site:create:{site_name}", frappe.get_traceback()
+                )
+    except Exception:
+        frappe.log_error("sync_site:process", frappe.get_traceback())
+
+    # ----- Step 4: Mark stale local sites as dropped (always runs) -----
+    try:
+        # Re-fetch to include any newly created records
+        local_sites = frappe.get_all(
+            "Go1 FCloud Site", filters={"is_dropped": 0}, fields=["url", "name"]
+        )
         cloud_urls = {s.get("name", "") for s in cloud_sites}
+        cloud_urls.discard("")  # don't match empty URLs
+
         for local in local_sites:
-            if local["url"] not in cloud_urls:
+            if local.get("url") and local["url"] not in cloud_urls:
                 frappe.db.set_value(
                     "Go1 FCloud Site", local["name"], "is_dropped", 1
                 )
         frappe.db.commit()
-
     except Exception:
-        frappe.log_error("sync_site", frappe.get_traceback())
+        frappe.log_error("sync_site:cleanup", frappe.get_traceback())
 
 
 # --------------------------------------------------------------------------- #
