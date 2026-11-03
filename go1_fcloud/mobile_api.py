@@ -3332,11 +3332,20 @@ def get_github_installations():
     """
     try:
         _require_role()
-        result = unwrap(cloud_post("press.api.github.options"))
+        result = unwrap(cloud_get("press.api.github.options"))
         return _ok(result)
     except frappe.ValidationError as e:
-        return _err(str(e))
+        frappe.clear_messages()
+        error_msg = str(e)
+        if "Bad credentials" in error_msg:
+            return _err(
+                "GitHub App credentials are invalid or expired. "
+                "Please reconnect your GitHub account on Frappe Cloud "
+                "(Settings → GitHub App Integration)."
+            )
+        return _err(error_msg)
     except Exception:
+        frappe.clear_messages()
         frappe.log_error("mobile_api.get_github_installations", frappe.get_traceback())
         return _err("Failed to fetch GitHub installations.")
 
@@ -3362,8 +3371,16 @@ def get_github_repositories(installation, owner):
         )
         return _ok(result)
     except frappe.ValidationError as e:
-        return _err(str(e))
+        frappe.clear_messages()
+        error_msg = str(e)
+        if "Bad credentials" in error_msg:
+            return _err(
+                "GitHub App credentials are invalid or expired. "
+                "Please reconnect your GitHub account on Frappe Cloud."
+            )
+        return _err(error_msg)
     except Exception:
+        frappe.clear_messages()
         frappe.log_error("mobile_api.get_github_repositories", frappe.get_traceback())
         return _err("Failed to fetch GitHub repositories.")
 
@@ -3390,8 +3407,16 @@ def get_github_branches(installation, owner, repo):
         )
         return _ok(result)
     except frappe.ValidationError as e:
-        return _err(str(e))
+        frappe.clear_messages()
+        error_msg = str(e)
+        if "Bad credentials" in error_msg:
+            return _err(
+                "GitHub App credentials are invalid or expired. "
+                "Please reconnect your GitHub account on Frappe Cloud."
+            )
+        return _err(error_msg)
     except Exception:
+        frappe.clear_messages()
         frappe.log_error("mobile_api.get_github_branches", frappe.get_traceback())
         return _err("Failed to fetch branches.")
 
@@ -3426,8 +3451,16 @@ def validate_github_app(installation, owner, repo, branch):
         )
         return _ok(result)
     except frappe.ValidationError as e:
-        return _err(str(e))
+        frappe.clear_messages()
+        error_msg = str(e)
+        if "Bad credentials" in error_msg:
+            return _err(
+                "GitHub App credentials are invalid or expired. "
+                "Please reconnect your GitHub account on Frappe Cloud."
+            )
+        return _err(error_msg)
     except Exception:
+        frappe.clear_messages()
         frappe.log_error("mobile_api.validate_github_app", frappe.get_traceback())
         return _err("Failed to validate app.")
 
@@ -3521,8 +3554,10 @@ def add_github_app_to_bench(
         result = cloud_post("press.api.app.new", payload)
         return _ok(unwrap(result))
     except frappe.ValidationError as e:
+        frappe.clear_messages()
         return _err(str(e))
     except Exception:
+        frappe.clear_messages()
         frappe.log_error("mobile_api.add_github_app_to_bench", frappe.get_traceback())
         return _err("Failed to add app to bench.")
 
