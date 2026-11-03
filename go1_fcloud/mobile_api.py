@@ -3351,7 +3351,7 @@ def get_github_installations():
 
 
 @frappe.whitelist()
-def get_github_repositories(installation, owner):
+def get_github_repositories(installation, owner, search=None):
     """
     Return repositories accessible via a GitHub App installation.
 
@@ -3361,6 +3361,7 @@ def get_github_repositories(installation, owner):
     Args:
       installation:  GitHub App installation ID (from get_github_installations)
       owner:         GitHub org / user login (e.g. "pra17shant")
+      search:        Optional search string to filter repos by name
 
     Returns:
       { "success": true, "data": [ { "id": ..., "name": ..., "private": ..., ... }, ... ] }
@@ -3373,7 +3374,6 @@ def get_github_repositories(installation, owner):
         if isinstance(result, list):
             installations = result
         elif isinstance(result, dict):
-            # Try known keys, fall back to first list value found
             installations = (
                 result.get("installations")
                 or result.get("options")
@@ -3383,15 +3383,21 @@ def get_github_repositories(installation, owner):
             installations = []
 
         install_str = str(installation) if installation else ""
+        repos = []
 
         for inst in installations:
             if not isinstance(inst, dict):
                 continue
-            # Compare as strings to avoid int/str type mismatch
             if str(inst.get("id", "")) == install_str or inst.get("login", "") == owner:
-                return _ok(inst.get("repos", []))
+                repos = inst.get("repos", [])
+                break
 
-        return _ok([])
+        # Filter by search query
+        if search and repos:
+            q = search.lower()
+            repos = [r for r in repos if q in (r.get("name") or "").lower()]
+
+        return _ok(repos)
     except frappe.ValidationError as e:
         frappe.clear_messages()
         error_msg = str(e)
@@ -3415,16 +3421,17 @@ def get_github_branches(installation, owner, repo):
     Args:
       installation:  GitHub App installation ID
       owner:         GitHub org / user login
-      repo:          Repository name (e.g. "frappe_sapcon")
+      repo:          Repository name (e.g. "ParasonCustomapp")
 
-    Endpoint: press.api.github.branches
+    Endpoint: press.api.github.repository
+    (param "name" = repo name, returns repo details including branches)
     """
     try:
         _require_role()
         result = unwrap(
             cloud_post(
-                "press.api.github.branches",
-                {"installation": installation, "owner": owner, "repo": repo},
+                "press.api.github.repository",
+                {"installation": installation, "owner": owner, "name": repo},
             )
         )
         return _ok(result)
@@ -3437,10 +3444,10 @@ def get_github_branches(installation, owner, repo):
                 "Please reconnect your GitHub account on Frappe Cloud."
             )
         return _err(error_msg)
-    except Exception:
+    except Exception as e:
         frappe.clear_messages()
         frappe.log_error("mobile_api.get_github_branches", frappe.get_traceback())
-        return _err("Failed to fetch branches.")
+        return _err(f"Failed to fetch branches: {str(e)}")
 
 
 @frappe.whitelist()
