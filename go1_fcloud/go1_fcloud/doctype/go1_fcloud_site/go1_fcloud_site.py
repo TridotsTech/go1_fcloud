@@ -735,10 +735,12 @@ def sync_site():
             "Go1 FCloud Site", filters={"is_dropped": 0}, fields=["url", "name"]
         )
         cloud_urls = {s.get("name", "") for s in cloud_sites}
-        cloud_urls.discard("")  # don't match empty URLs
+        cloud_urls.discard("")
 
         for local in local_sites:
-            if local.get("url") and local["url"] not in cloud_urls:
+            local_url = local.get("url")
+            # Mark as dropped if: no URL (incomplete record) OR URL not on cloud
+            if not local_url or local_url not in cloud_urls:
                 frappe.db.set_value(
                     "Go1 FCloud Site", local["name"], "is_dropped", 1
                 )
