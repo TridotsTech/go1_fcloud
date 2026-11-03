@@ -3315,6 +3315,219 @@ def get_marketplace_app_install_options(marketplace_app):
 
 
 # =========================================================================== #
+#  GITHUB APP MANAGEMENT (Add custom apps from GitHub — public & private)
+# =========================================================================== #
+
+
+@frappe.whitelist()
+def get_github_installations():
+    """
+    Return GitHub App installations (organizations / users) linked to the
+    Frappe Cloud team.
+
+    Endpoint: press.api.github.options
+
+    Response shape:
+      { "success": true, "data": [ { "id": ..., "login": ..., ... }, ... ] }
+    """
+    try:
+        _require_role()
+        result = unwrap(cloud_post("press.api.github.options"))
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_github_installations", frappe.get_traceback())
+        return _err("Failed to fetch GitHub installations.")
+
+
+@frappe.whitelist()
+def get_github_repositories(installation, owner):
+    """
+    Return repositories accessible via a GitHub App installation.
+
+    Args:
+      installation:  GitHub App installation ID (from get_github_installations)
+      owner:         GitHub org / user login (e.g. "TridotsTech")
+
+    Endpoint: press.api.github.repository
+    """
+    try:
+        _require_role()
+        result = unwrap(
+            cloud_post(
+                "press.api.github.repository",
+                {"installation": installation, "owner": owner},
+            )
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_github_repositories", frappe.get_traceback())
+        return _err("Failed to fetch GitHub repositories.")
+
+
+@frappe.whitelist()
+def get_github_branches(installation, owner, repo):
+    """
+    Return branches for a private GitHub repository.
+
+    Args:
+      installation:  GitHub App installation ID
+      owner:         GitHub org / user login
+      repo:          Repository name (e.g. "frappe_sapcon")
+
+    Endpoint: press.api.github.branches
+    """
+    try:
+        _require_role()
+        result = unwrap(
+            cloud_post(
+                "press.api.github.branches",
+                {"installation": installation, "owner": owner, "repo": repo},
+            )
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_github_branches", frappe.get_traceback())
+        return _err("Failed to fetch branches.")
+
+
+@frappe.whitelist()
+def validate_github_app(installation, owner, repo, branch):
+    """
+    Validate that a GitHub repository + branch contains a valid Frappe app.
+
+    Returns the detected app title and name (e.g. "Found Sapcon (sapcon)").
+
+    Args:
+      installation:  GitHub App installation ID
+      owner:         GitHub org / user login
+      repo:          Repository name
+      branch:        Git branch name
+
+    Endpoint: press.api.github.app
+    """
+    try:
+        _require_role()
+        result = unwrap(
+            cloud_post(
+                "press.api.github.app",
+                {
+                    "installation": installation,
+                    "owner": owner,
+                    "repository": repo,
+                    "branch": branch,
+                },
+            )
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.validate_github_app", frappe.get_traceback())
+        return _err("Failed to validate app.")
+
+
+@frappe.whitelist()
+def fetch_public_repo_branches(url):
+    """
+    Fetch branches for a public GitHub repository given its URL.
+
+    Args:
+      url:  Public GitHub repository URL
+            (e.g. "https://github.com/ArkOne-Softwares/frappe_sapcon")
+
+    Parses the URL to extract owner/repo, then queries the GitHub REST API
+    (no authentication required for public repositories).
+    """
+    import re
+    import requests as _requests
+
+    try:
+        _require_role()
+
+        # Parse owner and repo from URL
+        match = re.match(
+            r"https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", (url or "").strip()
+        )
+        if not match:
+            return _err(
+                "Invalid GitHub URL. Expected format: https://github.com/owner/repo"
+            )
+
+        owner, repo = match.group(1), match.group(2)
+
+        # Fetch branches from GitHub public API
+        gh_url = f"https://api.github.com/repos/{owner}/{repo}/branches"
+        resp = _requests.get(gh_url, timeout=15, params={"per_page": 100})
+        if resp.status_code == 404:
+            return _err(f"Repository '{owner}/{repo}' not found or is private.")
+        resp.raise_for_status()
+
+        branches = [{"name": b["name"]} for b in resp.json()]
+        return _ok({"owner": owner, "repo": repo, "branches": branches})
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except _requests.exceptions.RequestException as e:
+        frappe.log_error("mobile_api.fetch_public_repo_branches", str(e))
+        return _err("Failed to fetch branches from GitHub.")
+    except Exception:
+        frappe.log_error(
+            "mobile_api.fetch_public_repo_branches", frappe.get_traceback()
+        )
+        return _err("Failed to fetch branches.")
+
+
+@frappe.whitelist()
+def add_github_app_to_bench(
+    bench_name, title, url, branch, github_installation_id=None
+):
+    """
+    Add a custom GitHub app to a bench (Release Group).
+
+    Works for both public and private repositories.
+
+    Args:
+      bench_name:              Go1 FCloud Bench doc name, Cloud bench ID, or title
+      title:                   App display title (e.g. "Sapcon")
+      url:                     GitHub repository URL
+      branch:                  Git branch name
+      github_installation_id:  GitHub App installation ID (required for private repos,
+                               omit for public repos)
+
+    Endpoint: press.api.app.new
+    """
+    try:
+        _require_role()
+        doc, bench_id = _resolve_bench(bench_name)
+
+        if not title or not url or not branch:
+            return _err("title, url, and branch are required.")
+
+        payload = {
+            "app": {
+                "title": title,
+                "name": title.lower().replace(" ", "_"),
+                "repository_url": url,
+                "branch": branch,
+                "group": bench_id,
+                "github_installation_id": github_installation_id or "",
+            }
+        }
+        result = cloud_post("press.api.app.new", payload)
+        return _ok(unwrap(result))
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.add_github_app_to_bench", frappe.get_traceback())
+        return _err("Failed to add app to bench.")
+
+
+# =========================================================================== #
 #  SYNC  (pull Frappe Cloud data into local Frappe DocTypes)
 # =========================================================================== #
 
