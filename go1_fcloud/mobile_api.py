@@ -3367,7 +3367,9 @@ def get_github_repositories(installation, owner):
     """
     try:
         _require_role()
-        installations = unwrap(cloud_post("press.api.github.options")) or []
+        # Use cloud_get (same as get_github_installations) — cloud_post
+        # sends a null JSON body which Press rejects for this endpoint.
+        installations = unwrap(cloud_get("press.api.github.options")) or []
 
         # Handle single object response
         if isinstance(installations, dict):
@@ -3390,10 +3392,10 @@ def get_github_repositories(installation, owner):
                 "Please reconnect your GitHub account on Frappe Cloud."
             )
         return _err(error_msg)
-    except Exception:
+    except Exception as e:
         frappe.clear_messages()
         frappe.log_error("mobile_api.get_github_repositories", frappe.get_traceback())
-        return _err("Failed to fetch GitHub repositories.")
+        return _err(f"Failed to fetch GitHub repositories: {str(e)}")
 
 
 @frappe.whitelist()
