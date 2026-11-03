@@ -3356,8 +3356,7 @@ def get_github_repositories(installation, owner):
     Return repositories accessible via a GitHub App installation.
 
     Extracts repos from the press.api.github.options response by matching
-    the given installation ID and owner. No separate API call needed — the
-    installations response already contains the repos list.
+    the given installation ID or owner login.
 
     Args:
       installation:  GitHub App installation ID (from get_github_installations)
@@ -3368,13 +3367,17 @@ def get_github_repositories(installation, owner):
     """
     try:
         _require_role()
-        installation = int(installation) if installation else None
-        installations = unwrap(cloud_get("press.api.github.options")) or []
+        installations = unwrap(cloud_post("press.api.github.options")) or []
+
+        # Handle single object response
+        if isinstance(installations, dict):
+            installations = [installations]
+
+        install_str = str(installation) if installation else ""
 
         for inst in installations:
-            inst_id = inst.get("id")
-            inst_login = inst.get("login", "")
-            if inst_id == installation or inst_login == owner:
+            # Compare as strings to avoid int/str type mismatch
+            if str(inst.get("id", "")) == install_str or inst.get("login", "") == owner:
                 return _ok(inst.get("repos", []))
 
         return _ok([])
