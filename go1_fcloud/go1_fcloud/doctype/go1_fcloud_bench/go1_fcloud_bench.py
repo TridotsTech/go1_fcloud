@@ -790,6 +790,7 @@ def sync_bench():
     """Pull all benches from Frappe Cloud and create/update local docs."""
     from go1_fcloud.utils import cloud_post, unwrap
 
+    # ----- Step 1: Fetch cloud benches (critical — abort if this fails) -----
     try:
         cloud_benches = (
             unwrap(
@@ -800,8 +801,19 @@ def sync_bench():
             )
             or []
         )
-        bench_opts = unwrap(cloud_post("press.api.bench.options")) or {}
+    except Exception:
+        frappe.log_error("sync_bench:fetch_cloud_benches", frappe.get_traceback())
+        return
 
+    # ----- Step 2: Fetch supplementary data (non-critical) -----
+    bench_opts = {}
+    try:
+        bench_opts = unwrap(cloud_post("press.api.bench.options")) or {}
+    except Exception:
+        frappe.log_error("sync_bench:fetch_options", frappe.get_traceback())
+
+    # ----- Step 3: Create / update local docs -----
+    try:
         local_benches = frappe.get_all(
             "Go1 FCloud Bench",
             filters={"is_dropped": 0},
@@ -813,53 +825,76 @@ def sync_bench():
         for bench in cloud_benches:
             title = bench.get("title", "")
             bench_id = bench.get("name", "")
+            if not bench_id:
+                continue
 
             # Match by cloud bench ID first, then by title
             local_name = local_by_id.get(bench_id) or local_by_title.get(title)
             if local_name:
-                doc = frappe.get_doc("Go1 FCloud Bench", local_name)
-                doc.status = bench.get("status", "")
-                doc.version = bench.get("version", "")
-                if bench_id and not doc.id:
-                    doc.id = bench_id
-                doc.app_data = json.dumps(get_apps(doc.id or bench_id))
-                doc.save(ignore_permissions=True)
-                frappe.db.commit()
+                try:
+                    doc = frappe.get_doc("Go1 FCloud Bench", local_name)
+                    doc.status = bench.get("status", "")
+                    doc.version = bench.get("version", "")
+                    if bench_id and not doc.id:
+                        doc.id = bench_id
+                    doc.app_data = json.dumps(get_apps(doc.id or bench_id))
+                    doc.save(ignore_permissions=True)
+                    frappe.db.commit()
+                except Exception:
+                    frappe.log_error(
+                        f"sync_bench:update:{bench_id}", frappe.get_traceback()
+                    )
                 continue
 
-            details = _get_cloud_bench_details(bench_id)
-            doc = frappe.new_doc("Go1 FCloud Bench")
-            doc.data = json.dumps(bench_opts, separators=(",", ":"))
-            doc.bench = title
-            doc.id = bench_id
-            doc.status = bench.get("status", "")
-            doc.version = bench.get("version", "")
-            doc.region = details.get("region", "")
-            doc.app_data = json.dumps(get_apps(doc.id))
+            try:
+                details = _get_cloud_bench_details(bench_id)
+                doc = frappe.new_doc("Go1 FCloud Bench")
+                doc.data = json.dumps(bench_opts, separators=(",", ":"))
+                doc.bench = title
+                doc.id = bench_id
+                doc.status = bench.get("status", "")
+                doc.version = bench.get("version", "")
+                doc.region = details.get("region", "")
+                doc.app_data = json.dumps(get_apps(doc.id))
 
-            for app in details.get("installed_apps", []):
-                doc.append("apps", {"title": app.get("name", "")})
-                doc.append(
-                    "custom",
-                    {"title": app.get("name", ""), "app_name": app.get("name", "")},
-                )
-
-            doc.insert(ignore_permissions=True)
-            frappe.db.commit()
-
-        # Mark local benches as dropped if deleted from Frappe Cloud
-        if cloud_benches:
-            cloud_titles = {b.get("title", "") for b in cloud_benches}
-            cloud_ids = {b.get("name", "") for b in cloud_benches}
-            for local in local_benches:
-                if local["bench"] not in cloud_titles and local.get("id") not in cloud_ids:
-                    frappe.db.set_value(
-                        "Go1 FCloud Bench", local["name"], "is_dropped", 1
+                for app in details.get("installed_apps", []):
+                    doc.append("apps", {"title": app.get("name", "")})
+                    doc.append(
+                        "custom",
+                        {"title": app.get("name", ""), "app_name": app.get("name", "")},
                     )
-            frappe.db.commit()
 
+                doc.insert(ignore_permissions=True)
+                frappe.db.commit()
+            except Exception:
+                frappe.log_error(
+                    f"sync_bench:create:{bench_id}", frappe.get_traceback()
+                )
     except Exception:
-        frappe.log_error("sync_bench", frappe.get_traceback())
+        frappe.log_error("sync_bench:process", frappe.get_traceback())
+
+    # ----- Step 4: Mark stale local benches as dropped (always runs) -----
+    try:
+        local_benches = frappe.get_all(
+            "Go1 FCloud Bench",
+            filters={"is_dropped": 0},
+            fields=["bench", "name", "id"],
+        )
+        cloud_titles = {b.get("title", "") for b in cloud_benches}
+        cloud_titles.discard("")
+        cloud_ids = {b.get("name", "") for b in cloud_benches}
+        cloud_ids.discard("")
+
+        for local in local_benches:
+            title_match = local.get("bench") and local["bench"] in cloud_titles
+            id_match = local.get("id") and local["id"] in cloud_ids
+            if not title_match and not id_match:
+                frappe.db.set_value(
+                    "Go1 FCloud Bench", local["name"], "is_dropped", 1
+                )
+        frappe.db.commit()
+    except Exception:
+        frappe.log_error("sync_bench:cleanup", frappe.get_traceback())
 
 
 def _get_cloud_bench_details(bench_id: str) -> dict:
