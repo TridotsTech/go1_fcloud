@@ -3367,17 +3367,26 @@ def get_github_repositories(installation, owner):
     """
     try:
         _require_role()
-        # Use cloud_get (same as get_github_installations) — cloud_post
-        # sends a null JSON body which Press rejects for this endpoint.
-        installations = unwrap(cloud_get("press.api.github.options")) or []
+        result = unwrap(cloud_get("press.api.github.options")) or []
 
-        # Handle single object response
-        if isinstance(installations, dict):
-            installations = [installations]
+        # Normalize: result may be a flat list [...] or a dict {"installations": [...]}
+        if isinstance(result, list):
+            installations = result
+        elif isinstance(result, dict):
+            # Try known keys, fall back to first list value found
+            installations = (
+                result.get("installations")
+                or result.get("options")
+                or next((v for v in result.values() if isinstance(v, list)), [])
+            )
+        else:
+            installations = []
 
         install_str = str(installation) if installation else ""
 
         for inst in installations:
+            if not isinstance(inst, dict):
+                continue
             # Compare as strings to avoid int/str type mismatch
             if str(inst.get("id", "")) == install_str or inst.get("login", "") == owner:
                 return _ok(inst.get("repos", []))
