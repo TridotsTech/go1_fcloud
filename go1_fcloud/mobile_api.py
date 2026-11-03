@@ -3428,10 +3428,13 @@ def get_github_branches(installation, owner, repo):
     """
     try:
         _require_role()
+        # Cast to int — Frappe sends POST params as strings but Press
+        # needs an integer to look up the GitHub App installation token.
+        install_id = int(installation) if installation else None
         result = unwrap(
             cloud_post(
                 "press.api.github.repository",
-                {"installation": installation, "owner": owner, "name": repo},
+                {"installation": install_id, "owner": owner, "name": repo},
             )
         )
         return _ok(result)
@@ -3467,11 +3470,12 @@ def validate_github_app(installation, owner, repo, branch):
     """
     try:
         _require_role()
+        install_id = int(installation) if installation else None
         result = unwrap(
             cloud_post(
                 "press.api.github.app",
                 {
-                    "installation": installation,
+                    "installation": install_id,
                     "owner": owner,
                     "repository": repo,
                     "branch": branch,
@@ -3577,7 +3581,7 @@ def add_github_app_to_bench(
                 "repository_url": url,
                 "branch": branch,
                 "group": bench_id,
-                "github_installation_id": github_installation_id or "",
+                "github_installation_id": int(github_installation_id) if github_installation_id else "",
             }
         }
         result = cloud_post("press.api.app.new", payload)
