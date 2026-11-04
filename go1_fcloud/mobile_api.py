@@ -476,17 +476,38 @@ def get_site(name):
                 }
             ]
 
+        # Resolve bench_name and region from local doc or cloud group ID
+        group = site_data.get("group", "")
+        bench_name = (doc.bench_name if doc else "") or ""
+        bench_doc = None
+        if not bench_name and group:
+            bench_doc = (
+                frappe.get_doc("Go1 FCloud Bench", {"id": group})
+                if frappe.db.exists("Go1 FCloud Bench", {"id": group})
+                else None
+            )
+            bench_name = bench_doc.name if bench_doc else ""
+
+        # Region: try site_data first, then local bench doc, then local site doc
+        region = (
+            site_data.get("cluster")
+            or (site_data.get("region_info") or {}).get("title")
+            or (bench_doc.region if bench_doc else "")
+            or (doc.region if doc else "")
+            or ""
+        )
+
         return _ok(
             {
                 "name": doc.name if doc else cloud_name,
                 "site_name": cloud_name,
                 "status": site_data.get("status", doc.status if doc else ""),
                 "version": site_data.get("frappe_version", doc.version if doc else ""),
-                "region": site_data.get("cluster", doc.region if doc else ""),
+                "region": region,
                 "plan": plan,
                 "usage": usage,
-                "bench": site_data.get("group", doc.bench if doc else ""),
-                "bench_name": doc.bench_name if doc else "",
+                "bench": group or (doc.bench if doc else ""),
+                "bench_name": bench_name,
                 "project": doc.project if doc else "",
                 "apps": apps,
                 "default_domain": default_domain,
@@ -515,26 +536,37 @@ def site_action(name, action, extra=None):
     """
     try:
         _require_role()
-        doc = frappe.get_doc("Go1 FCloud Site", name)
-        if not doc.url:
-            return _err("Site URL not set.")
+        cloud_name = _resolve_site(name)
+
+        # Try to load local doc for post-action state updates
+        doc = None
+        if frappe.db.exists("Go1 FCloud Site", name):
+            doc = frappe.get_doc("Go1 FCloud Site", name)
+        else:
+            local_name = frappe.db.get_value(
+                "Go1 FCloud Site", {"url": cloud_name}, "name"
+            ) or frappe.db.get_value(
+                "Go1 FCloud Site", {"site_name": cloud_name}, "name"
+            )
+            if local_name:
+                doc = frappe.get_doc("Go1 FCloud Site", local_name)
 
         params = json.loads(extra) if extra else {}
 
         action_map = {
-            "activate": ("press.api.site.activate", {"name": doc.url}),
-            "deactivate": ("press.api.site.deactivate", {"name": doc.url}),
+            "activate": ("press.api.site.activate", {"name": cloud_name}),
+            "deactivate": ("press.api.site.deactivate", {"name": cloud_name}),
             "backup": (
                 "press.api.site.backup",
-                {"name": doc.url, "with_files": params.get("with_files", True)},
+                {"name": cloud_name, "with_files": params.get("with_files", True)},
             ),
-            "migrate": ("press.api.site.migrate", {"name": doc.url}),
-            "clear_cache": ("press.api.site.clear_cache", {"name": doc.url}),
-            "drop_site": ("press.api.site.archive", {"name": doc.url, "force": True}),
-            "login": ("press.api.site.login", {"name": doc.url}),
+            "migrate": ("press.api.site.migrate", {"name": cloud_name}),
+            "clear_cache": ("press.api.site.clear_cache", {"name": cloud_name}),
+            "drop_site": ("press.api.site.archive", {"name": cloud_name, "force": True}),
+            "login": ("press.api.site.login", {"name": cloud_name}),
             "setup_wizard_complete": (
                 "press.api.site.setup_wizard_complete",
-                {"name": doc.url},
+                {"name": cloud_name},
             ),
         }
 
@@ -545,13 +577,14 @@ def site_action(name, action, extra=None):
         result = cloud_post(endpoint, payload)
 
         # Post-action local state update
-        if action == "drop_site":
-            doc.is_dropped = 1
-            doc.status = "Archived"
-            doc.save(ignore_permissions=True)
-        elif action in ("activate", "deactivate"):
-            doc.status = "Active" if action == "activate" else "Inactive"
-            doc.save(ignore_permissions=True)
+        if doc:
+            if action == "drop_site":
+                doc.is_dropped = 1
+                doc.status = "Archived"
+                doc.save(ignore_permissions=True)
+            elif action in ("activate", "deactivate"):
+                doc.status = "Active" if action == "activate" else "Inactive"
+                doc.save(ignore_permissions=True)
 
         return _ok({"action": action, "result": unwrap(result)})
     except frappe.ValidationError as e:
