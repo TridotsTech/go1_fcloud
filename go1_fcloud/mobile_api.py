@@ -1111,13 +1111,34 @@ def get_site_options(bench_name=None):
             for cp in p.get("cloud_providers", []):
                 providers.add(cp)
 
+        # Build combined apps dict: marketplace apps + private bench apps
+        all_apps = dict(options.get("marketplace_apps", {}))
+        if bench_name:
+            bench_apps = (
+                unwrap(cloud_post("press.api.bench.apps", {"name": bench_id}))
+                or []
+            )
+            for a in bench_apps:
+                app_name = a.get("name", "")
+                if app_name and app_name not in all_apps:
+                    all_apps[app_name] = {
+                        "title": a.get("title", app_name),
+                        "image": a.get("image", ""),
+                        "description": a.get("description", ""),
+                        "app": app_name,
+                        "branch": a.get("branch", ""),
+                        "repository": a.get("repository", ""),
+                        "repository_owner": a.get("repository_owner", ""),
+                        "source": a.get("source", ""),
+                    }
+
         return _ok(
             {
                 "domain": domain,
                 "cluster_domains": cluster_domains,
                 "regions": regions,
                 "versions": versions,
-                "marketplace_apps": options.get("marketplace_apps", {}),
+                "marketplace_apps": all_apps,
                 "plans": plans,
                 "filters": {
                     "providers": sorted(providers),
