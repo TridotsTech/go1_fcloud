@@ -3369,6 +3369,124 @@ def get_marketplace_app_install_options(marketplace_app):
 
 
 # =========================================================================== #
+#  GITHUB AUTHENTICATION (connect / disconnect GitHub account)
+# =========================================================================== #
+
+
+@frappe.whitelist()
+def get_github_auth_url():
+    """
+    Return the GitHub App authorization URL so the user can install / authorize
+    the Frappe Cloud GitHub App on their GitHub account.
+
+    Endpoint: press.api.github.authorize_url  (GET)
+
+    Response:
+      { "success": true, "data": { "url": "https://github.com/apps/..." } }
+    """
+    try:
+        _require_role()
+        result = unwrap(cloud_get("press.api.github.authorize_url"))
+        return _ok(result)
+    except frappe.ValidationError as e:
+        frappe.clear_messages()
+        return _err(str(e))
+    except Exception:
+        frappe.clear_messages()
+        frappe.log_error("mobile_api.get_github_auth_url", frappe.get_traceback())
+        return _err("Failed to fetch GitHub authorization URL.")
+
+
+@frappe.whitelist()
+def get_github_auth_status():
+    """
+    Check whether GitHub is connected to the Frappe Cloud team.
+
+    Calls press.api.github.options and returns a simplified status indicating
+    whether any GitHub App installations are linked.
+
+    Response:
+      {
+        "success": true,
+        "data": {
+          "connected": true,
+          "installations": [ { "id": ..., "login": ..., ... }, ... ]
+        }
+      }
+    """
+    try:
+        _require_role()
+        result = unwrap(cloud_get("press.api.github.options"))
+
+        # Normalize response — may be a list or dict with installations key
+        if isinstance(result, list):
+            installations = result
+        elif isinstance(result, dict):
+            installations = (
+                result.get("installations")
+                or result.get("options")
+                or next((v for v in result.values() if isinstance(v, list)), [])
+            )
+        else:
+            installations = []
+
+        return _ok({
+            "connected": len(installations) > 0,
+            "installation_count": len(installations),
+            "installations": [
+                {
+                    "id": inst.get("id", ""),
+                    "login": inst.get("login", ""),
+                    "image": inst.get("image", ""),
+                }
+                for inst in installations
+                if isinstance(inst, dict)
+            ],
+        })
+    except frappe.ValidationError as e:
+        frappe.clear_messages()
+        error_msg = str(e)
+        if "Bad credentials" in error_msg:
+            return _ok({
+                "connected": False,
+                "installation_count": 0,
+                "installations": [],
+                "error": "GitHub credentials expired. Please re-authorize.",
+            })
+        return _err(error_msg)
+    except Exception:
+        frappe.clear_messages()
+        frappe.log_error("mobile_api.get_github_auth_status", frappe.get_traceback())
+        return _err("Failed to check GitHub connection status.")
+
+
+@frappe.whitelist()
+def clear_github_auth():
+    """
+    Clear the stored GitHub token and return a fresh GitHub App installation
+    URL so the user can re-authorize.
+
+    Endpoint: press.api.github.clear_token_and_get_github_app_url  (POST)
+
+    Response:
+      { "success": true, "data": { "url": "https://github.com/apps/..." } }
+    """
+    try:
+        _require_role()
+        result = unwrap(
+            cloud_post("press.api.github.clear_token_and_get_github_app_url")
+        )
+        return _ok(result)
+    except frappe.ValidationError as e:
+        frappe.clear_messages()
+        return _err(str(e))
+    except Exception:
+        frappe.clear_messages()
+        frappe.log_error("mobile_api.clear_github_auth", frappe.get_traceback())
+        return _err("Failed to clear GitHub authorization.")
+
+
+# =========================================================================== #
 #  GITHUB APP MANAGEMENT (Add custom apps from GitHub — public & private)
 # =========================================================================== #
 
