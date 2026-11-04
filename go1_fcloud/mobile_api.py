@@ -25,7 +25,7 @@ import json
 from datetime import datetime, timedelta
 from go1_fcloud.utils import cloud_get, cloud_post, unwrap
 
-MOBILE_ROLES = ("System Manager", "Frappe Cloud User")
+MOBILE_ROLES = ("System Manager", "FCloud","FCloud Admin")
 
 
 def _require_role():
@@ -3025,9 +3025,39 @@ def get_server_options():
             key=lambda s: s.get("order_in_list", 0),
         )
 
-        # Back-fill plan_type on plans
-        app_plans = data.get("app_plans", [])
-        db_plans = data.get("db_plans", [])
+        # Back-fill plan_type and normalize every plan with resource displays.
+        # The Press API returns raw DB values where price_inr/price_usd may
+        # be 0. The actual display price in Frappe Cloud is computed server-
+        # side via ServerPlan.get_doc() → get_price_per_day().  We normalise
+        # plans here so the frontend always has resource display fields and
+        # all raw fields are preserved (including any pricing fields that may
+        # be added by newer Press versions).
+        raw_app_plans = data.get("app_plans", [])
+        raw_db_plans = data.get("db_plans", [])
+
+        def _fmt_plan(p):
+            """Return a plan dict with normalized resources and display fields."""
+            vcpu = p.get("vcpu", 0)
+            raw_mem = p.get("memory", 0)
+            memory = _normalize_memory(raw_mem) if raw_mem else 0
+            disk = p.get("disk", 0)
+            price_inr = p.get("price_inr", 0) or 0
+            price_usd = p.get("price_usd", 0) or 0
+            return {
+                **p,
+                "vcpu": vcpu,
+                "memory": memory,
+                "disk": disk,
+                "price_inr": price_inr,
+                "price_usd": price_usd,
+                "vcpu_display": f"{vcpu} vCPU" if vcpu else "",
+                "memory_display": f"{memory} GB RAM" if memory else "",
+                "disk_display": f"{disk} GB Disk" if disk else "",
+            }
+
+        app_plans = [_fmt_plan(p) for p in raw_app_plans]
+        db_plans = [_fmt_plan(p) for p in raw_db_plans]
+
         for plan in app_plans + db_plans:
             if not plan.get("plan_type"):
                 plan["plan_type"] = default_plan_type
@@ -3054,12 +3084,8 @@ def get_server_options():
             separate_app = [
                 {
                     **p,
-                    "estimated_total_inr": (
-                        p.get("price_inr", 0) + min_db_inr
-                    ),
-                    "estimated_total_usd": (
-                        p.get("price_usd", 0) + min_db_usd
-                    ),
+                    "estimated_total_inr": p["price_inr"] + min_db_inr,
+                    "estimated_total_usd": p["price_usd"] + min_db_usd,
                 }
                 for p in st_app
             ]
@@ -3070,8 +3096,8 @@ def get_server_options():
             unified = [
                 {
                     **p,
-                    "total_inr": p.get("price_inr", 0),
-                    "total_usd": p.get("price_usd", 0),
+                    "total_inr": p["price_inr"],
+                    "total_usd": p["price_usd"],
                 }
                 for p in st_app
                 if p.get("allow_unified_server") in (1, True, "1")
