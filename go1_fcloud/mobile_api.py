@@ -3032,26 +3032,49 @@ def get_server_options():
             if not plan.get("plan_type"):
                 plan["plan_type"] = default_plan_type
 
-        # Group plans by service_type and deployment_mode
-        # allow_unified_server on a plan: 1 = can be used in unified mode,
-        # 0 = separate mode only.
-        # Separate mode needs both app_plans and db_plans.
-        # Unified mode needs only app_plans with allow_unified_server=1.
+        # Group plans by service_type and deployment_mode with computed totals.
+        # Separate mode: user picks an app_plan + db_plan (two servers).
+        # Unified mode: user picks one plan covering both app + db.
         plans_by_service_type = {}
         for st in service_types:
             st_name = st["name"]
             st_app = [p for p in app_plans if p.get("plan_type") == st_name]
             st_db = [p for p in db_plans if p.get("plan_type") == st_name]
 
-            # Separate mode: all app_plans (regardless of allow_unified_server)
-            # and all db_plans for this service type
-            separate_app = st_app
-            separate_db = st_db
+            # Cheapest DB plan for this service type (for separate mode totals)
+            min_db_inr = min(
+                (p.get("price_inr", 0) for p in st_db), default=0
+            )
+            min_db_usd = min(
+                (p.get("price_usd", 0) for p in st_db), default=0
+            )
 
-            # Unified mode: only app_plans where allow_unified_server == 1
+            # Separate mode: each app plan gets an estimated total
+            # (app plan price + cheapest matching DB plan price)
+            separate_app = [
+                {
+                    **p,
+                    "estimated_total_inr": (
+                        p.get("price_inr", 0) + min_db_inr
+                    ),
+                    "estimated_total_usd": (
+                        p.get("price_usd", 0) + min_db_usd
+                    ),
+                }
+                for p in st_app
+            ]
+            separate_db = list(st_db)
+
+            # Unified mode: only plans where allow_unified_server is truthy.
+            # Total is just the single plan price (one server).
             unified = [
-                p for p in st_app
-                if p.get("allow_unified_server") == 1
+                {
+                    **p,
+                    "total_inr": p.get("price_inr", 0),
+                    "total_usd": p.get("price_usd", 0),
+                }
+                for p in st_app
+                if p.get("allow_unified_server") in (1, True, "1")
             ]
 
             plans_by_service_type[st_name] = {
@@ -3059,6 +3082,8 @@ def get_server_options():
                 "separate": {
                     "app_plans": separate_app,
                     "db_plans": separate_db,
+                    "min_db_plan_inr": min_db_inr,
+                    "min_db_plan_usd": min_db_usd,
                 },
                 "unified": {
                     "app_plans": unified,
