@@ -1839,7 +1839,7 @@ def bench_action(name, action, extra=None):
     Args:
       name:   Go1 FCloud Bench doc name
       action: restart | rebuild | update_all_sites | archive |
-              deploy_check | remove_app | change_branch
+              deploy_check | remove_app | change_branch | generate_ssh_key
       extra:  JSON string with optional params
               remove_app:    {"app": "erpnext"}
               change_branch: {"app": "erpnext", "to_branch": "version-15"}
@@ -1908,9 +1908,55 @@ def bench_action(name, action, extra=None):
             )
             return _ok(unwrap(result))
 
+        elif action == "generate_ssh_key":
+            result = unwrap(
+                cloud_post(
+                    "press.api.client.run_doc_method",
+                    {
+                        "dt": "Release Group",
+                        "dn": bench_id,
+                        "method": "get_certificate",
+                    },
+                )
+            )
+            if not result:
+                return _err("Failed to generate SSH certificate.")
+            if doc:
+                doc.ssh_certificate = result.get("ssh_certificate", "")
+                doc.command = ""
+                # Build SSH command if possible
+                versions = (
+                    unwrap(cloud_post("press.api.bench.versions", {"name": bench_id}))
+                    or []
+                )
+                site_bench_resp = (
+                    unwrap(
+                        cloud_post(
+                            "press.api.client.get_list",
+                            {
+                                "doctype": "Site",
+                                "fields": ["bench"],
+                                "filters": {
+                                    "group": bench_id,
+                                    "skip_team_filter_for_system_user": True,
+                                },
+                                "order_by": "creation desc, bench desc",
+                                "limit_page_length": 1,
+                            },
+                        )
+                    )
+                    or []
+                )
+                if versions and site_bench_resp:
+                    site_bench = site_bench_resp[0].get("bench", "")
+                    proxy = versions[0].get("proxy_server", "")
+                    doc.command = f"ssh {site_bench}@{proxy} -p 2222"
+                doc.save(ignore_permissions=True)
+            return _ok(result)
+
         else:
             return _err(
-                f"Unknown action: {action}. Valid: restart, rebuild, update_all_sites, archive, deploy_check, remove_app, change_branch"
+                f"Unknown action: {action}. Valid: restart, rebuild, update_all_sites, archive, deploy_check, remove_app, change_branch, generate_ssh_key"
             )
 
     except frappe.ValidationError as e:
