@@ -183,47 +183,66 @@ def dashboard(activity_filter=None):
         }
 
         # --- Recent Activity ---
-        activities = []
-        site_names = [s.get("name") for s in cloud_sites if s.get("name")]
-
-        for site_name in site_names[:10]:
-            try:
-                site_activities = (
-                    unwrap(
-                        cloud_post(
-                            "press.api.site.activities",
-                            {
-                                "filters": {"site": site_name},
-                                "order_by": "creation desc",
-                                "limit_page_length": 5,
-                            },
-                        )
-                    )
-                    or []
+        # Fetch recent Site Activity entries in a single call
+        site_activity_list = (
+            unwrap(
+                cloud_post(
+                    "press.api.client.get_list",
+                    {
+                        "doctype": "Site Activity",
+                        "fields": ["name", "action", "site", "reason", "creation", "job"],
+                        "order_by": "creation desc",
+                        "limit_page_length": 30,
+                    },
                 )
-                for a in site_activities:
-                    status_raw = (a.get("status") or "").strip()
-                    activities.append(
+            )
+            or []
+        )
+
+        # Fetch Agent Job statuses for activities that have a linked job
+        job_names = [a["job"] for a in site_activity_list if a.get("job")]
+        job_status_map = {}
+        if job_names:
+            job_list = (
+                unwrap(
+                    cloud_post(
+                        "press.api.client.get_list",
                         {
-                            "title": a.get("action") or a.get("type") or "Activity",
-                            "status": _normalise_activity_status(status_raw),
-                            "type": "site",
-                            "site": site_name,
-                            "creation": a.get("creation") or "",
-                            "reason": a.get("reason") or "",
-                        }
+                            "doctype": "Agent Job",
+                            "fields": ["name", "status"],
+                            "filters": {"name": ["in", job_names]},
+                            "limit_page_length": len(job_names),
+                        },
                     )
-            except Exception:
+                )
+                or []
+            )
+            job_status_map = {
+                j.get("name", ""): j.get("status", "")
+                for j in job_list
+            }
+
+        activities = []
+        for a in site_activity_list:
+            job_status = job_status_map.get(a.get("job", ""), "")
+            status_raw = job_status or "Success"
+            normalised = _normalise_activity_status(status_raw)
+
+            if activity_filter in ("Success", "Failed") and normalised != activity_filter:
                 continue
 
-        activities.sort(key=lambda x: x.get("creation", ""), reverse=True)
-        activities = activities[:20]
+            activities.append(
+                {
+                    "title": a.get("action") or "Activity",
+                    "status": normalised,
+                    "type": "site",
+                    "site": a.get("site", ""),
+                    "creation": a.get("creation", ""),
+                    "reason": a.get("reason", ""),
+                }
+            )
 
-        # Apply activity_filter
-        if activity_filter in ("Success", "Failed"):
-            activities = [
-                a for a in activities if a.get("status") == activity_filter
-            ]
+        activities = activities[:20]
 
         return _ok(
             {
