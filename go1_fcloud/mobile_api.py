@@ -183,66 +183,49 @@ def dashboard(activity_filter=None):
         }
 
         # --- Recent Activity ---
-        # Fetch recent Site Activity entries in a single call
-        site_activity_list = (
-            unwrap(
-                cloud_post(
-                    "press.api.client.get_list",
-                    {
-                        "doctype": "Site Activity",
-                        "fields": ["name", "action", "site", "reason", "creation", "job"],
-                        "order_by": "creation desc",
-                        "limit_page_length": 30,
-                    },
-                )
-            )
-            or []
-        )
-
-        # Fetch Agent Job statuses for activities that have a linked job
-        job_names = [a["job"] for a in site_activity_list if a.get("job")]
-        job_status_map = {}
-        if job_names:
-            job_list = (
-                unwrap(
-                    cloud_post(
-                        "press.api.client.get_list",
-                        {
-                            "doctype": "Agent Job",
-                            "fields": ["name", "status"],
-                            "filters": {"name": ["in", job_names]},
-                            "limit_page_length": len(job_names),
-                        },
-                    )
-                )
-                or []
-            )
-            job_status_map = {
-                j.get("name", ""): j.get("status", "")
-                for j in job_list
-            }
-
+        # Fetch recent Agent Jobs per site using press.api.site.jobs
         activities = []
-        for a in site_activity_list:
-            job_status = job_status_map.get(a.get("job", ""), "")
-            status_raw = job_status or "Success"
-            normalised = _normalise_activity_status(status_raw)
+        site_names = [s.get("name") for s in cloud_sites if s.get("name")]
 
-            if activity_filter in ("Success", "Failed") and normalised != activity_filter:
+        for site_name in site_names[:10]:
+            try:
+                site_jobs = (
+                    unwrap(
+                        cloud_post(
+                            "press.api.site.jobs",
+                            {
+                                "filters": {"site": site_name},
+                                "order_by": "creation desc",
+                                "limit_page_length": 5,
+                            },
+                        )
+                    )
+                    or []
+                )
+                for j in site_jobs:
+                    activities.append(
+                        {
+                            "title": j.get("job_type") or "Activity",
+                            "status": _normalise_activity_status(
+                                (j.get("status") or "").strip()
+                            ),
+                            "type": "site",
+                            "site": site_name,
+                            "creation": j.get("creation") or "",
+                            "reason": "",
+                        }
+                    )
+            except Exception:
                 continue
 
-            activities.append(
-                {
-                    "title": a.get("action") or "Activity",
-                    "status": normalised,
-                    "type": "site",
-                    "site": a.get("site", ""),
-                    "creation": a.get("creation", ""),
-                    "reason": a.get("reason", ""),
-                }
-            )
-
+        activities.sort(key=lambda x: x.get("creation", ""), reverse=True)
         activities = activities[:20]
+
+        # Apply activity_filter
+        if activity_filter in ("Success", "Failed"):
+            activities = [
+                a for a in activities if a.get("status") == activity_filter
+            ]
 
         return _ok(
             {
