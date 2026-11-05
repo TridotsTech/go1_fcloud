@@ -1765,11 +1765,34 @@ def get_bench(name):
         cloud_apps = (
             unwrap(cloud_post("press.api.bench.apps", {"name": bench_id})) or []
         )
+
+        # Fetch app images from Marketplace App
+        app_names = [a.get("name", "") for a in cloud_apps if a.get("name")]
+        app_image_map = {}
+        if app_names:
+            marketplace_apps = (
+                unwrap(
+                    cloud_post(
+                        "press.api.client.get_list",
+                        {
+                            "doctype": "Marketplace App",
+                            "fields": ["name", "image"],
+                            "filters": {"app": ["in", app_names]},
+                            "limit_page_length": len(app_names),
+                        },
+                    )
+                )
+                or []
+            )
+            for ma in marketplace_apps:
+                app_image_map[ma.get("name", "")] = ma.get("image", "")
+
         apps = [
             {
                 "name": a.get("name", ""),
                 "title": a.get("title", ""),
                 "branch": a.get("branch", ""),
+                "image": app_image_map.get(a.get("name", ""), ""),
             }
             for a in cloud_apps
         ]
