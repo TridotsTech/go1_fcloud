@@ -1817,7 +1817,7 @@ def get_bench(name):
                         "press.api.client.get_list",
                         {
                             "doctype": "Marketplace App",
-                            "fields": ["name", "image"],
+                            "fields": ["name", "app", "image"],
                             "filters": {"app": ["in", app_names]},
                             "limit_page_length": len(app_names),
                         },
@@ -1826,7 +1826,7 @@ def get_bench(name):
                 or []
             )
             for ma in marketplace_apps:
-                app_image_map[ma.get("name", "")] = ma.get("image", "")
+                app_image_map[ma.get("app", "")] = ma.get("image", "")
 
         apps = [
             {
