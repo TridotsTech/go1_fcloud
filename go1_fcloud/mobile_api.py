@@ -1909,7 +1909,8 @@ def bench_action(name, action, extra=None):
             return _ok(unwrap(result))
 
         elif action == "generate_ssh_key":
-            result = unwrap(
+            # Try to get an existing valid certificate first
+            cert = unwrap(
                 cloud_post(
                     "press.api.client.run_doc_method",
                     {
@@ -1919,40 +1920,61 @@ def bench_action(name, action, extra=None):
                     },
                 )
             )
-            if not result:
-                return _err("Failed to generate SSH certificate.")
-            if doc:
-                doc.ssh_certificate = result.get("ssh_certificate", "")
-                doc.command = ""
-                # Build SSH command if possible
-                versions = (
-                    unwrap(cloud_post("press.api.bench.versions", {"name": bench_id}))
-                    or []
-                )
-                site_bench_resp = (
-                    unwrap(
-                        cloud_post(
-                            "press.api.client.get_list",
-                            {
-                                "doctype": "Site",
-                                "fields": ["bench"],
-                                "filters": {
-                                    "group": bench_id,
-                                    "skip_team_filter_for_system_user": True,
-                                },
-                                "order_by": "creation desc, bench desc",
-                                "limit_page_length": 1,
-                            },
-                        )
+            # If no valid certificate exists, generate a new one
+            if not cert:
+                cert = unwrap(
+                    cloud_post(
+                        "press.api.bench.generate_certificate",
+                        {"name": bench_id},
                     )
-                    or []
                 )
-                if versions and site_bench_resp:
-                    site_bench = site_bench_resp[0].get("bench", "")
-                    proxy = versions[0].get("proxy_server", "")
-                    doc.command = f"ssh {site_bench}@{proxy} -p 2222"
+            if not cert or not cert.get("ssh_certificate"):
+                return _err("Failed to generate SSH certificate.")
+
+            ssh_certificate = cert["ssh_certificate"]
+
+            # Build SSH command from bench versions and site info
+            versions = (
+                unwrap(cloud_post("press.api.bench.versions", {"name": bench_id}))
+                or []
+            )
+            site_bench_resp = (
+                unwrap(
+                    cloud_post(
+                        "press.api.client.get_list",
+                        {
+                            "doctype": "Site",
+                            "fields": ["bench"],
+                            "filters": {
+                                "group": bench_id,
+                                "skip_team_filter_for_system_user": True,
+                            },
+                            "order_by": "creation desc, bench desc",
+                            "limit_page_length": 1,
+                        },
+                    )
+                )
+                or []
+            )
+            if not versions or not site_bench_resp:
+                return _err("Could not build SSH command. Is there a site on this bench?")
+
+            site_bench = site_bench_resp[0].get("bench", "")
+            proxy = versions[0].get("proxy_server", "")
+            ssh_command = f"ssh {site_bench}@{proxy} -p 2222"
+            step1 = f"echo '{ssh_certificate.strip()}' > ~/.ssh/id_rsa-cert.pub"
+            full_command = f"{step1} && {ssh_command}"
+
+            if doc:
+                doc.ssh_certificate = ssh_certificate
+                doc.command = ssh_command
                 doc.save(ignore_permissions=True)
-            return _ok(result)
+
+            return _ok({
+                "certificate": cert,
+                "ssh_command": ssh_command,
+                "command": full_command,
+            })
 
         else:
             return _err(
