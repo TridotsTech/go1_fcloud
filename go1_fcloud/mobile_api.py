@@ -1659,6 +1659,27 @@ def get_benches(status_filter=None, search=None, server=None):
             or []
         )
 
+        # Fetch last deploy date per group from the latest Bench (deployed version)
+        bench_dates = (
+            unwrap(
+                cloud_post(
+                    "press.api.client.get_list",
+                    {
+                        "doctype": "Bench",
+                        "fields": ["group", "max(creation) as last_deploy"],
+                        "filters": {"status": ("!=", "Archived")},
+                        "group_by": "group",
+                        "limit_page_length": 0,
+                    },
+                )
+            )
+            or []
+        )
+        last_deploy_map = {
+            d.get("group", ""): d.get("last_deploy", "")
+            for d in bench_dates
+        }
+
         # Build local doc lookup for linking local doc name
         local_benches = frappe.get_all(
             "Go1 FCloud Bench",
@@ -1721,6 +1742,7 @@ def get_benches(status_filter=None, search=None, server=None):
                 "version": b.get("version", ""),
                 "project": local.get("project", ""),
                 "creation": b.get("creation", ""),
+                "last_deploy": last_deploy_map.get(bench_id, ""),
                 "app_count": len(bench_apps),
                 "site_count": b.get("site_count", 0),
                 "active_benches": b.get("active_benches", 0),
