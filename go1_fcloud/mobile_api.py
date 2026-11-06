@@ -95,27 +95,78 @@ def _fetch_deploy_information(bench_id):
     """Fetch deploy information for a Release Group from Press.
 
     Tries the direct ``press.api.bench.deploy_information`` endpoint first.
-    If that fails with a permission error (the ``@protected`` decorator
-    checks team ownership), falls back to
-    ``press.api.client.run_doc_method`` which uses role-based access
-    and may succeed for support / system users.
+    If that fails (the ``@protected`` decorator checks team ownership),
+    falls back to ``press.api.client.get`` which uses read-only document
+    access checks and may succeed when the @protected gate does not.
+    The fallback constructs a minimal deploy-info dict from the Release
+    Group document and its ``deployed_versions`` dashboard method.
+
+    Note: ``press.api.client.run_doc_method`` cannot call
+    ``deploy_information`` because it is not ``@dashboard_whitelist()``.
     """
     try:
         return unwrap(
             cloud_post("press.api.bench.deploy_information", {"name": bench_id})
         )
     except Exception:
-        # Fallback: run_doc_method uses different permission checks
-        return unwrap(
+        # Clear error messages from the first attempt so they don't
+        # accumulate in _server_messages and confuse the client.
+        frappe.clear_messages()
+
+        # Fallback: fetch the Release Group document via the client.get
+        # endpoint (read-only access) and construct basic deploy info.
+        rg_doc = unwrap(
             cloud_post(
-                "press.api.client.run_doc_method",
-                {
-                    "dt": "Release Group",
-                    "dn": bench_id,
-                    "method": "deploy_information",
-                },
+                "press.api.client.get",
+                {"doctype": "Release Group", "name": bench_id},
             )
-        )
+        ) or {}
+
+        apps = []
+        for app in rg_doc.get("apps", []):
+            apps.append({
+                "app": app.get("app", ""),
+                "title": app.get("title", ""),
+                "source": app.get("source", ""),
+                "branch": app.get("branch", ""),
+                "repository": app.get("repository", ""),
+                "repository_owner": app.get("repository_owner", ""),
+                "current_hash": "",
+                "current_tag": "",
+                "current_release": "",
+                "next_release": "",
+                "releases": [],
+                "update_available": False,
+                "will_branch_change": False,
+            })
+
+        # Try to get site list via deployed_versions (dashboard-whitelisted).
+        sites = []
+        try:
+            versions = unwrap(
+                cloud_post(
+                    "press.api.client.run_doc_method",
+                    {
+                        "dt": "Release Group",
+                        "dn": bench_id,
+                        "method": "deployed_versions",
+                    },
+                )
+            ) or []
+            for v in versions:
+                for s in v.get("sites", []):
+                    sites.append(s)
+        except Exception:
+            frappe.clear_messages()
+
+        return frappe._dict({
+            "update_available": False,
+            "deploy_in_progress": False,
+            "number_of_apps": len(apps),
+            "removed_apps": [],
+            "apps": apps,
+            "sites": sites,
+        })
 
 
 # =========================================================================== #
