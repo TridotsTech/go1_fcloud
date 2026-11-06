@@ -2619,19 +2619,24 @@ def get_bench_deploy_candidate(candidate_name=None, name=None):
             frappe.clear_messages()
 
         if pipeline:
-            # Pipeline found — extract builds from its steps
-            steps = pipeline.get("steps") or []
+            # Extract build names from pipeline_builds child table (reliable)
             build_names = []
-            for stage in steps:
-                for b in stage.get("builds", []):
-                    bname = b.get("name") or b.get("build")
+            for pb in pipeline.get("pipeline_builds", []):
+                if isinstance(pb, dict):
+                    bname = pb.get("build")
                     if bname and bname not in build_names:
                         build_names.append(bname)
-                # Also check pipeline_builds child table
-            for pb in pipeline.get("pipeline_builds", []):
-                bname = pb.get("build")
-                if bname and bname not in build_names:
-                    build_names.append(bname)
+
+            # Also scan steps if they are structured dicts with builds
+            steps = pipeline.get("steps") or []
+            for stage in steps:
+                if not isinstance(stage, dict):
+                    continue
+                for b in stage.get("builds", []):
+                    if isinstance(b, dict):
+                        bname = b.get("name") or b.get("build")
+                        if bname and bname not in build_names:
+                            build_names.append(bname)
 
             # Fetch each build's detail
             for bname in build_names:
@@ -2642,7 +2647,7 @@ def get_bench_deploy_candidate(candidate_name=None, name=None):
                             {"doctype": "Deploy Candidate Build", "name": bname},
                         )
                     )
-                    if build_doc:
+                    if build_doc and isinstance(build_doc, dict):
                         builds.append(_format_build(build_doc))
                 except Exception:
                     frappe.clear_messages()
@@ -2654,7 +2659,6 @@ def get_bench_deploy_candidate(candidate_name=None, name=None):
                 "creation": pipeline.get("creation", ""),
                 "owner": pipeline.get("owner", ""),
                 "release_group": pipeline.get("release_group", ""),
-                "steps": steps,
                 "builds": builds,
             })
 
@@ -2729,10 +2733,11 @@ def get_bench_deploy_candidate(candidate_name=None, name=None):
         return _err(f"Deploy '{candidate_name}' not found.")
     except frappe.ValidationError as e:
         return _err(str(e))
-    except Exception as e:
-        tb = frappe.get_traceback()
-        frappe.log_error("mobile_api.get_bench_deploy_candidate", tb)
-        return _err(f"Failed to fetch deploy candidate status. DEBUG: {e}\n{tb}")
+    except Exception:
+        frappe.log_error(
+            "mobile_api.get_bench_deploy_candidate", frappe.get_traceback()
+        )
+        return _err("Failed to fetch deploy candidate status.")
 
 
 def _format_build(build_doc):
