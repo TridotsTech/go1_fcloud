@@ -71,24 +71,45 @@ def _resolve_bench(name):
 
     Accepts:
       - Local Go1 FCloud Bench doc name (e.g. "kjro56udmf")
-      - Frappe Cloud bench ID (e.g. "bench-50438")
+      - Frappe Cloud Release Group ID (e.g. "bench-50438")
+      - Bench title stored in the local doc's ``bench`` field
+
+    Returns:
+      (doc | None, cloud_release_group_id)
+
+    Raises:
+      frappe.ValidationError if the bench cannot be resolved to a cloud ID.
     """
+    doc = None
+
     # Try local doc name first
     if frappe.db.exists("Go1 FCloud Bench", name):
         doc = frappe.get_doc("Go1 FCloud Bench", name)
-        return doc, doc.id or doc.bench
-    # Try by cloud bench ID
-    local_name = frappe.db.get_value("Go1 FCloud Bench", {"id": name}, "name")
-    if local_name:
-        doc = frappe.get_doc("Go1 FCloud Bench", local_name)
-        return doc, doc.id or doc.bench
-    # Try by bench title
-    local_name = frappe.db.get_value("Go1 FCloud Bench", {"bench": name}, "name")
-    if local_name:
-        doc = frappe.get_doc("Go1 FCloud Bench", local_name)
-        return doc, doc.id or doc.bench
-    # Not found locally — use the name directly as cloud bench ID
-    return None, name
+    else:
+        # Try by cloud bench ID stored in the id field
+        local_name = frappe.db.get_value("Go1 FCloud Bench", {"id": name}, "name")
+        if local_name:
+            doc = frappe.get_doc("Go1 FCloud Bench", local_name)
+        else:
+            # Try by bench title
+            local_name = frappe.db.get_value("Go1 FCloud Bench", {"bench": name}, "name")
+            if local_name:
+                doc = frappe.get_doc("Go1 FCloud Bench", local_name)
+
+    if doc:
+        bench_id = doc.id
+        if bench_id:
+            return doc, bench_id
+        # id field is empty — the local doc was never synced with the cloud
+        frappe.throw(
+            _("Bench '{0}' has no linked Release Group ID. Please sync benches first.").format(name)
+        )
+
+    # No local doc — accept the name only if it looks like a cloud ID
+    if name and name.startswith("bench-"):
+        return None, name
+
+    frappe.throw(_("Bench '{0}' not found.").format(name))
 
 
 def _fetch_deploy_information(bench_id):
