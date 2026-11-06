@@ -3131,21 +3131,6 @@ def get_server_options():
         _require_role()
         data = unwrap(cloud_post("press.api.server.options")) or {}
 
-        # Debug: log raw plan pricing from Press API
-        raw_app = data.get("app_plans", [])
-        raw_db = data.get("db_plans", [])
-        frappe.logger("fcloud").info(
-            "get_server_options raw pricing — app_plans: %s, db_plans: %s",
-            [
-                {"name": p.get("name"), "price_inr": p.get("price_inr"), "price_usd": p.get("price_usd")}
-                for p in raw_app[:5]
-            ],
-            [
-                {"name": p.get("name"), "price_inr": p.get("price_inr"), "price_usd": p.get("price_usd")}
-                for p in raw_db[:5]
-            ],
-        )
-
         # Build providers list from regions_data
         regions_data = data.get("regions_data", {})
         provider_map = {}
@@ -3206,15 +3191,15 @@ def get_server_options():
             key=lambda s: s.get("order_in_list", 0),
         )
 
-        # Back-fill plan_type and normalize every plan with resource displays.
-        # The Press API returns raw DB values where price_inr/price_usd may
-        # be 0. The actual display price in Frappe Cloud is computed server-
-        # side via ServerPlan.get_doc() → get_price_per_day().  We normalise
-        # plans here so the frontend always has resource display fields and
-        # all raw fields are preserved (including any pricing fields that may
-        # be added by newer Press versions).
+        # Back-fill plan_type and normalize every plan with resource and
+        # pricing display fields.  price_inr / price_usd from the Press API
+        # are *monthly* prices.  The Frappe Cloud dashboard also computes a
+        # daily rate (monthly / days-in-current-month) which we replicate
+        # here as price_per_day_*.  Raw fields are preserved via **p so that
+        # cluster, platform, instance_type etc. are available for filtering.
         raw_app_plans = data.get("app_plans", [])
         raw_db_plans = data.get("db_plans", [])
+        days_in_month = frappe.utils.get_last_day(None).day
 
         def _fmt_plan(p):
             """Return a plan dict with normalized resources and display fields."""
@@ -3224,6 +3209,7 @@ def get_server_options():
             disk = p.get("disk", 0)
             price_inr = p.get("price_inr", 0) or 0
             price_usd = p.get("price_usd", 0) or 0
+            platform = p.get("platform", "")
             return {
                 **p,
                 "vcpu": vcpu,
@@ -3231,9 +3217,12 @@ def get_server_options():
                 "disk": disk,
                 "price_inr": price_inr,
                 "price_usd": price_usd,
+                "price_per_day_inr": round(price_inr / days_in_month, 2) if price_inr else 0,
+                "price_per_day_usd": round(price_usd / days_in_month, 2) if price_usd else 0,
                 "vcpu_display": f"{vcpu} vCPU" if vcpu else "",
                 "memory_display": f"{memory} GB RAM" if memory else "",
                 "disk_display": f"{disk} GB Disk" if disk else "",
+                "platform_display": "ARM" if platform == "arm64" else "x86" if platform else "",
             }
 
         app_plans = [_fmt_plan(p) for p in raw_app_plans]
@@ -3261,15 +3250,19 @@ def get_server_options():
             )
 
             # Separate mode: each app plan gets an estimated total
-            # (app plan price + cheapest matching DB plan price)
-            separate_app = [
-                {
+            # (app plan price + cheapest matching DB plan price).
+            # Both monthly and per-day totals are provided.
+            separate_app = []
+            for p in st_app:
+                total_inr = p["price_inr"] + min_db_inr
+                total_usd = p["price_usd"] + min_db_usd
+                separate_app.append({
                     **p,
-                    "estimated_total_inr": p["price_inr"] + min_db_inr,
-                    "estimated_total_usd": p["price_usd"] + min_db_usd,
-                }
-                for p in st_app
-            ]
+                    "estimated_total_inr": total_inr,
+                    "estimated_total_usd": total_usd,
+                    "estimated_total_per_day_inr": round(total_inr / days_in_month, 2) if total_inr else 0,
+                    "estimated_total_per_day_usd": round(total_usd / days_in_month, 2) if total_usd else 0,
+                })
             separate_db = list(st_db)
 
             # Unified mode: only plans where allow_unified_server is truthy.
@@ -3279,6 +3272,8 @@ def get_server_options():
                     **p,
                     "total_inr": p["price_inr"],
                     "total_usd": p["price_usd"],
+                    "total_per_day_inr": p["price_per_day_inr"],
+                    "total_per_day_usd": p["price_per_day_usd"],
                 }
                 for p in st_app
                 if p.get("allow_unified_server") in (1, True, "1")
