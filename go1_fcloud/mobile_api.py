@@ -102,14 +102,14 @@ def _resolve_bench(name):
             return doc, bench_id
         # id field is empty — the local doc was never synced with the cloud
         frappe.throw(
-            _("Bench '{0}' has no linked Release Group ID. Please sync benches first.").format(name)
+            f"Bench '{name}' has no linked Release Group ID. Please sync benches first."
         )
 
     # No local doc — accept the name only if it looks like a cloud ID
     if name and name.startswith("bench-"):
         return None, name
 
-    frappe.throw(_("Bench '{0}' not found.").format(name))
+    frappe.throw(f"Bench '{name}' not found.")
 
 
 def _fetch_deploy_information(bench_id):
