@@ -2581,14 +2581,14 @@ def get_bench_deploys(name, start=0, limit=20):
 
 
 @frappe.whitelist()
-def get_bench_deploy_candidate(candidate_name):
+def get_bench_deploy_candidate(candidate_name=None, name=None):
     """
     Return deploy pipeline / build detail for a specific deploy.
 
     Shows: status, created_by, start/end times, duration, build stages
     with steps (command, output, cached flag), issues, and build output.
 
-    The ``candidate_name`` can be:
+    The ``candidate_name`` (or ``name``) can be:
       - A Release Pipeline name  (newer deploys)
       - A Deploy Candidate Build name
       - A Deploy Candidate name  (resolved to its builds)
@@ -2596,9 +2596,13 @@ def get_bench_deploy_candidate(candidate_name):
     Args:
       candidate_name:  Pipeline, build, or deploy-candidate identifier
                        (e.g. "734h2vihje")
+      name:            Alias for candidate_name (for mobile app compat)
     """
     try:
         _require_role()
+        candidate_name = candidate_name or name
+        if not candidate_name:
+            return _err("Missing required parameter: candidate_name or name.")
 
         pipeline = None
         builds = []
