@@ -2729,11 +2729,10 @@ def get_bench_deploy_candidate(candidate_name=None, name=None):
         return _err(f"Deploy '{candidate_name}' not found.")
     except frappe.ValidationError as e:
         return _err(str(e))
-    except Exception:
-        frappe.log_error(
-            "mobile_api.get_bench_deploy_candidate", frappe.get_traceback()
-        )
-        return _err("Failed to fetch deploy candidate status.")
+    except Exception as e:
+        tb = frappe.get_traceback()
+        frappe.log_error("mobile_api.get_bench_deploy_candidate", tb)
+        return _err(f"Failed to fetch deploy candidate status. DEBUG: {e}\n{tb}")
 
 
 def _format_build(build_doc):
