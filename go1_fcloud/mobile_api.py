@@ -3080,6 +3080,21 @@ def get_server_options():
         _require_role()
         data = unwrap(cloud_post("press.api.server.options")) or {}
 
+        # Debug: log raw plan pricing from Press API
+        raw_app = data.get("app_plans", [])
+        raw_db = data.get("db_plans", [])
+        frappe.logger("fcloud").info(
+            "get_server_options raw pricing — app_plans: %s, db_plans: %s",
+            [
+                {"name": p.get("name"), "price_inr": p.get("price_inr"), "price_usd": p.get("price_usd")}
+                for p in raw_app[:5]
+            ],
+            [
+                {"name": p.get("name"), "price_inr": p.get("price_inr"), "price_usd": p.get("price_usd")}
+                for p in raw_db[:5]
+            ],
+        )
+
         # Build providers list from regions_data
         regions_data = data.get("regions_data", {})
         provider_map = {}
