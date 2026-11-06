@@ -2583,20 +2583,146 @@ def get_bench_deploys(name, start=0, limit=20):
 @frappe.whitelist()
 def get_bench_deploy_candidate(candidate_name):
     """
-    Return status of a specific deploy candidate: build steps,
-    apps, jobs, and current status.
+    Return deploy pipeline / build detail for a specific deploy.
+
+    Shows: status, created_by, start/end times, duration, build stages
+    with steps (command, output, cached flag), issues, and build output.
+
+    The ``candidate_name`` can be:
+      - A Release Pipeline name  (newer deploys)
+      - A Deploy Candidate Build name
+      - A Deploy Candidate name  (resolved to its builds)
 
     Args:
-      candidate_name:  Deploy Candidate name (e.g. "deploy-candidate-00123")
+      candidate_name:  Pipeline, build, or deploy-candidate identifier
+                       (e.g. "734h2vihje")
     """
     try:
         _require_role()
-        result = unwrap(
-            cloud_get(
-                "press.api.bench.candidate", {"name": candidate_name}
+
+        pipeline = None
+        builds = []
+
+        # 1. Try as Release Pipeline (newer deploy system)
+        try:
+            pipeline = unwrap(
+                cloud_post(
+                    "press.api.client.get",
+                    {"doctype": "Release Pipeline", "name": candidate_name},
+                )
             )
-        )
-        return _ok(result)
+        except Exception:
+            frappe.clear_messages()
+
+        if pipeline:
+            # Pipeline found — extract builds from its steps
+            steps = pipeline.get("steps") or []
+            build_names = []
+            for stage in steps:
+                for b in stage.get("builds", []):
+                    bname = b.get("name") or b.get("build")
+                    if bname and bname not in build_names:
+                        build_names.append(bname)
+                # Also check pipeline_builds child table
+            for pb in pipeline.get("pipeline_builds", []):
+                bname = pb.get("build")
+                if bname and bname not in build_names:
+                    build_names.append(bname)
+
+            # Fetch each build's detail
+            for bname in build_names:
+                try:
+                    build_doc = unwrap(
+                        cloud_post(
+                            "press.api.client.get",
+                            {"doctype": "Deploy Candidate Build", "name": bname},
+                        )
+                    )
+                    if build_doc:
+                        builds.append(_format_build(build_doc))
+                except Exception:
+                    frappe.clear_messages()
+
+            return _ok({
+                "type": "pipeline",
+                "name": pipeline.get("name", ""),
+                "status": pipeline.get("status", ""),
+                "creation": pipeline.get("creation", ""),
+                "owner": pipeline.get("owner", ""),
+                "release_group": pipeline.get("release_group", ""),
+                "steps": steps,
+                "builds": builds,
+            })
+
+        # 2. Try as Deploy Candidate Build
+        build_doc = None
+        try:
+            build_doc = unwrap(
+                cloud_post(
+                    "press.api.client.get",
+                    {"doctype": "Deploy Candidate Build", "name": candidate_name},
+                )
+            )
+        except Exception:
+            frappe.clear_messages()
+
+        if build_doc:
+            return _ok({
+                "type": "build",
+                **_format_build(build_doc),
+            })
+
+        # 3. Try as Deploy Candidate — fetch its linked builds
+        dc_doc = None
+        try:
+            dc_doc = unwrap(
+                cloud_post(
+                    "press.api.client.get",
+                    {"doctype": "Deploy Candidate", "name": candidate_name},
+                )
+            )
+        except Exception:
+            frappe.clear_messages()
+
+        if dc_doc:
+            # Fetch builds linked to this deploy candidate
+            for field in ("intel_build", "arm_build"):
+                bname = dc_doc.get(field)
+                if bname:
+                    try:
+                        b = unwrap(
+                            cloud_post(
+                                "press.api.client.get",
+                                {"doctype": "Deploy Candidate Build", "name": bname},
+                            )
+                        )
+                        if b:
+                            builds.append(_format_build(b))
+                    except Exception:
+                        frappe.clear_messages()
+
+            return _ok({
+                "type": "deploy_candidate",
+                "name": dc_doc.get("name", ""),
+                "group": dc_doc.get("group", ""),
+                "creation": dc_doc.get("creation", ""),
+                "owner": dc_doc.get("owner", ""),
+                "apps": dc_doc.get("apps", []),
+                "builds": builds,
+            })
+
+        # 4. Last resort — try the protected endpoint
+        try:
+            result = unwrap(
+                cloud_get(
+                    "press.api.bench.candidate", {"name": candidate_name}
+                )
+            )
+            return _ok(result)
+        except Exception:
+            frappe.clear_messages()
+
+        return _err(f"Deploy '{candidate_name}' not found.")
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
@@ -2604,6 +2730,57 @@ def get_bench_deploy_candidate(candidate_name):
             "mobile_api.get_bench_deploy_candidate", frappe.get_traceback()
         )
         return _err("Failed to fetch deploy candidate status.")
+
+
+def _format_build(build_doc):
+    """Format a Deploy Candidate Build document for the mobile API response."""
+    build_steps = build_doc.get("build_steps", [])
+    # Group steps by stage
+    stages = {}
+    for step in build_steps:
+        stage_name = step.get("stage", "Unknown")
+        if stage_name not in stages:
+            stages[stage_name] = {
+                "stage": stage_name,
+                "stage_slug": step.get("stage_slug", ""),
+                "status": "Pending",
+                "steps": [],
+                "duration": 0,
+            }
+        stages[stage_name]["steps"].append({
+            "step": step.get("step", ""),
+            "step_slug": step.get("step_slug", ""),
+            "status": step.get("status", "Pending"),
+            "duration": step.get("duration", 0),
+            "cached": step.get("cached", False),
+            "command": step.get("command", ""),
+            "output": step.get("output", ""),
+        })
+        stages[stage_name]["duration"] += float(step.get("duration") or 0)
+        # Stage status = worst status among its steps
+        step_status = step.get("status", "Pending")
+        if step_status == "Failure":
+            stages[stage_name]["status"] = "Failure"
+        elif step_status == "Running" and stages[stage_name]["status"] != "Failure":
+            stages[stage_name]["status"] = "Running"
+        elif step_status == "Success" and stages[stage_name]["status"] == "Pending":
+            stages[stage_name]["status"] = "Success"
+
+    return {
+        "name": build_doc.get("name", ""),
+        "status": build_doc.get("status", ""),
+        "platform": build_doc.get("platform", ""),
+        "creation": build_doc.get("creation", ""),
+        "owner": build_doc.get("owner", ""),
+        "build_start": build_doc.get("build_start", ""),
+        "build_end": build_doc.get("build_end", ""),
+        "build_duration": build_doc.get("build_duration", ""),
+        "build_error": build_doc.get("build_error", ""),
+        "build_output": build_doc.get("build_output", ""),
+        "deploy_candidate": build_doc.get("deploy_candidate", ""),
+        "group": build_doc.get("group", ""),
+        "stages": list(stages.values()),
+    }
 
 
 @frappe.whitelist()
