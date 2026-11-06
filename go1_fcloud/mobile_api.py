@@ -73,6 +73,8 @@ def _resolve_bench(name):
       - Local Go1 FCloud Bench doc name (e.g. "kjro56udmf")
       - Frappe Cloud Release Group ID (e.g. "bench-50438")
       - Bench title stored in the local doc's ``bench`` field
+      - Deploy Candidate / pipeline name (e.g. "734h2vihje") —
+        resolved to its parent Release Group via the cloud API
 
     Returns:
       (doc | None, cloud_release_group_id)
@@ -108,6 +110,22 @@ def _resolve_bench(name):
     # No local doc — accept the name only if it looks like a cloud ID
     if name and name.startswith("bench-"):
         return None, name
+
+    # Try as a Deploy Candidate / pipeline name — resolve to its
+    # parent Release Group so callers get the correct bench ID.
+    if name:
+        try:
+            candidate = unwrap(
+                cloud_post(
+                    "press.api.client.get",
+                    {"doctype": "Deploy Candidate", "name": name},
+                )
+            ) or {}
+            group = candidate.get("group")
+            if group:
+                return None, group
+        except Exception:
+            frappe.clear_messages()
 
     frappe.throw(f"Bench '{name}' not found.")
 
