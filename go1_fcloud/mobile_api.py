@@ -27,6 +27,13 @@ from go1_fcloud.utils import cloud_get, cloud_post, unwrap
 
 MOBILE_ROLES = ("System Manager", "FCloud","FCloud Admin")
 
+DEFAULT_PERMISSION_DOCTYPES = [
+    "Go1 FCloud Site",
+    "Go1 FCloud Bench",
+    "Go1 FCloud Server",
+    "Go1 FCloud Configuration",
+]
+
 
 def _require_role():
     roles = frappe.get_roles(frappe.session.user)
@@ -4342,3 +4349,108 @@ def get_project_resources(project):
     except Exception:
         frappe.log_error("mobile_api.get_project_resources", frappe.get_traceback())
         return _err("Failed to fetch project resources.")
+
+
+# =========================================================================== #
+#  DOCTYPE PERMISSIONS
+# =========================================================================== #
+
+
+@frappe.whitelist()
+def get_doctype_permissions(doctypes=None):
+    """
+    Return the current user's permissions for the requested doctypes.
+
+    Only users linked to an active Employee record can access this endpoint.
+
+    Args:
+      doctypes: JSON list of doctype names, or a single doctype name string.
+                Defaults to DEFAULT_PERMISSION_DOCTYPES if omitted.
+
+    Returns:
+      {
+        "status": "Success",
+        "data": {
+          "Go1 FCloud Site": {
+            "read": true, "write": true, "create": false, "delete": false,
+            "submit": false, "amend": false, "is_submittable": false,
+            "istable": false, "if_owner": { ... }
+          },
+          ...
+        }
+      }
+    """
+    import frappe.permissions
+
+    try:
+        user = frappe.session.user
+        if not user or user == "Guest":
+            return {"status": "Failed", "message": "Not logged in"}
+
+        # Employee role validation — user must be linked to an active Employee
+        employee = frappe.db.get_value(
+            "Employee",
+            {"user_id": user, "status": "Active"},
+            "name",
+        )
+        if not employee:
+            return {"status": "Failed", "message": "No active Employee record linked to this user."}
+
+        if isinstance(doctypes, str):
+            doctypes = frappe.parse_json(doctypes)
+        if not doctypes:
+            doctypes = DEFAULT_PERMISSION_DOCTYPES
+        if isinstance(doctypes, str) or not isinstance(doctypes, (list, tuple)):
+            doctypes = [doctypes]
+
+        requested = []
+        for dt in doctypes:
+            if not isinstance(dt, str):
+                continue
+            dt = dt.strip()
+            if dt and dt not in requested:
+                requested.append(dt)
+
+        rights = frappe.permissions.get_rights()
+        data = {}
+        for dt in requested:
+            try:
+                if not frappe.db.exists("DocType", dt):
+                    continue
+                meta = frappe.get_meta(dt)
+                is_submittable = bool(meta.is_submittable)
+                perms = frappe.permissions.get_role_permissions(meta, user=user)
+
+                result = {right: bool(perms.get(right)) for right in rights}
+                if not is_submittable:
+                    result["submit"] = False
+                    result["amend"] = False
+                result["is_submittable"] = is_submittable
+                result["istable"] = bool(meta.istable)
+
+                if perms.get("has_if_owner_enabled"):
+                    owner_perms = frappe.permissions.get_role_permissions(
+                        meta, user=user, is_owner=True
+                    )
+                    owner_rights = owner_perms.get("if_owner") or {}
+                    if_owner = {right: bool(owner_rights.get(right)) for right in rights}
+                    if not is_submittable:
+                        if_owner["submit"] = False
+                        if_owner["amend"] = False
+                    result["if_owner"] = if_owner
+                else:
+                    result["if_owner"] = {}
+
+                data[dt] = result
+            except Exception:
+                frappe.log_error(
+                    title="get_doctype_permissions",
+                    message=frappe.get_traceback(),
+                )
+
+        return {"status": "Success", "data": data}
+    except Exception as e:
+        frappe.log_error(
+            title="get_doctype_permissions", message=frappe.get_traceback()
+        )
+        return {"status": "Failed", "message": str(e)}
