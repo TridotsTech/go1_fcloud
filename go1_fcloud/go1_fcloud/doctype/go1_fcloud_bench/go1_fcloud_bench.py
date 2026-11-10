@@ -873,11 +873,10 @@ def sync_bench():
     except Exception:
         frappe.log_error("sync_bench:process", frappe.get_traceback())
 
-    # ----- Step 4: Mark stale local benches as dropped (always runs) -----
+    # ----- Step 4: Remove stale local benches not in cloud (always runs) -----
     try:
         local_benches = frappe.get_all(
             "Go1 FCloud Bench",
-            filters={"is_dropped": 0},
             fields=["bench", "name", "id"],
         )
         cloud_titles = {b.get("title", "") for b in cloud_benches}
@@ -889,9 +888,17 @@ def sync_bench():
             title_match = local.get("bench") and local["bench"] in cloud_titles
             id_match = local.get("id") and local["id"] in cloud_ids
             if not title_match and not id_match:
-                frappe.db.set_value(
-                    "Go1 FCloud Bench", local["name"], "is_dropped", 1
-                )
+                try:
+                    frappe.delete_doc(
+                        "Go1 FCloud Bench",
+                        local["name"],
+                        ignore_permissions=True,
+                        force=True,
+                    )
+                except Exception:
+                    frappe.log_error(
+                        f"sync_bench:delete:{local['name']}", frappe.get_traceback()
+                    )
         frappe.db.commit()
     except Exception:
         frappe.log_error("sync_bench:cleanup", frappe.get_traceback())
