@@ -4482,22 +4482,36 @@ def get_doctype_permissions(doctypes=None):
                 requested.append(dt)
 
         rights = frappe.permissions.rights
+
+        # Clear permission cache so recent Role Permission Manager changes
+        # are reflected immediately instead of returning stale cached values.
+        frappe.clear_cache(user=user)
+
         data = {}
         for dt in requested:
             try:
                 if not frappe.db.exists("DocType", dt):
                     continue
-                meta = frappe.get_meta(dt)
+                meta = frappe.get_meta(dt, cached=False)
                 is_submittable = bool(meta.is_submittable)
-                perms = frappe.permissions.get_role_permissions(meta, user=user)
 
-                result = {right: bool(perms.get(right)) for right in rights}
+                # Use has_permission per right for accurate, cache-free results
+                result = {}
+                for right in rights:
+                    try:
+                        result[right] = frappe.has_permission(dt, right, user=user)
+                    except (frappe.PermissionError, Exception):
+                        result[right] = False
+
                 if not is_submittable:
                     result["submit"] = False
                     result["amend"] = False
+                    result["cancel"] = False
                 result["is_submittable"] = is_submittable
                 result["istable"] = bool(meta.istable)
 
+                # if_owner permissions
+                perms = frappe.permissions.get_role_permissions(meta, user=user)
                 if perms.get("has_if_owner_enabled"):
                     owner_perms = frappe.permissions.get_role_permissions(
                         meta, user=user, is_owner=True
@@ -4507,6 +4521,7 @@ def get_doctype_permissions(doctypes=None):
                     if not is_submittable:
                         if_owner["submit"] = False
                         if_owner["amend"] = False
+                        if_owner["cancel"] = False
                     result["if_owner"] = if_owner
                 else:
                     result["if_owner"] = {}
