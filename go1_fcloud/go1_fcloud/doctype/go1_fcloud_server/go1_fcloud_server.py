@@ -66,14 +66,30 @@ def sync_server():
             server_doc.insert(ignore_permissions=True)
             frappe.db.commit()
 
-        # Mark local servers deleted from Frappe Cloud
+        # Remove local servers not in cloud
+        local_servers = frappe.get_all(
+            "Go1 FCloud Server", fields=["name", "server_name", "server_id"]
+        )
         cloud_titles = {s.get("title", "") for s in cloud_servers}
+        cloud_titles.discard("")
         cloud_ids = {s.get("name", "") for s in cloud_servers}
+        cloud_ids.discard("")
+
         for local in local_servers:
-            if local["server_name"] not in cloud_titles and local.get("server_id") not in cloud_ids:
-                frappe.db.set_value(
-                    "Go1 FCloud Server", local["name"], "status", "Deleted"
-                )
+            title_match = local.get("server_name") and local["server_name"] in cloud_titles
+            id_match = local.get("server_id") and local["server_id"] in cloud_ids
+            if not title_match and not id_match:
+                try:
+                    frappe.delete_doc(
+                        "Go1 FCloud Server",
+                        local["name"],
+                        ignore_permissions=True,
+                        force=True,
+                    )
+                except Exception:
+                    frappe.log_error(
+                        f"sync_server:delete:{local['name']}", frappe.get_traceback()
+                    )
         frappe.db.commit()
 
     except Exception:

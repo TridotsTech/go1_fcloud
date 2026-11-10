@@ -4352,6 +4352,22 @@ def sync_benches_only():
         return _err("Failed to start bench sync.")
 
 
+@frappe.whitelist()
+def sync_servers_only():
+    """Enqueue server sync only."""
+    try:
+        _require_role()
+        from go1_fcloud.go1_fcloud.doctype.go1_fcloud_server.go1_fcloud_server import (
+            sync_server,
+        )
+
+        frappe.enqueue(sync_server, queue="long", job_name="fc_sync_server")
+        return _ok({"message": "Server sync started."})
+    except Exception:
+        frappe.log_error("mobile_api.sync_servers_only", frappe.get_traceback())
+        return _err("Failed to start server sync.")
+
+
 # =========================================================================== #
 #  DOMAIN CHECK (check subdomain availability before site creation)
 # =========================================================================== #
