@@ -1754,7 +1754,7 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
         )
 
         # Total count for the current filter set (for pagination)
-        total_filtered = frappe.count(
+        total_filtered = frappe.db.count(
             "Go1 FCloud Bench", filters=filters
         )
         has_next = (start + limit) < total_filtered
@@ -1816,10 +1816,9 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
         })
     except frappe.PermissionError:
         return _err("Not permitted to access Go1 FCloud Bench.")
-    except Exception as e:
-        tb = frappe.get_traceback()
-        frappe.log_error("mobile_api.get_benches", tb)
-        return _err(f"Failed to fetch benches. DEBUG: {e}\n{tb}")
+    except Exception:
+        frappe.log_error("mobile_api.get_benches", frappe.get_traceback())
+        return _err("Failed to fetch benches.")
 
 
 @frappe.whitelist()
