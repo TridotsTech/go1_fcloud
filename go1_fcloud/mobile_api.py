@@ -2981,67 +2981,121 @@ def delete_bench_config(name, key):
 
 
 @frappe.whitelist()
-def get_servers():
-    """List all servers fetched live from Frappe Cloud."""
+def get_servers(status_filter=None, search=None, start=0, limit=20):
+    """
+    List servers from local Go1 FCloud Server doctype with permission checks.
+
+    Uses ``frappe.get_list`` which automatically enforces the Role Permission
+    Manager rules defined on Go1 FCloud Server (System Manager, FCloud,
+    FCloud Admin).
+
+    Args:
+      status_filter: "Active" | "Pending" | None (all)
+      search:        substring search on server name
+      start:         pagination offset (default 0)
+      limit:         page size (default 20)
+    """
     try:
-        _require_role()
-        cloud_servers = unwrap(cloud_get("press.api.server.all")) or []
+        start = frappe.utils.cint(start)
+        limit = frappe.utils.cint(limit) or 20
 
-        # Build local doc lookup
-        local_servers = frappe.get_all(
+        # Permission flags for the current user
+        can_read = frappe.has_permission("Go1 FCloud Server", "read")
+        can_create = frappe.has_permission("Go1 FCloud Server", "create")
+        can_write = frappe.has_permission("Go1 FCloud Server", "write")
+        can_delete = frappe.has_permission("Go1 FCloud Server", "delete")
+
+        if not can_read:
+            return _err("Not permitted to access Go1 FCloud Server.")
+
+        # Build filters
+        filters = {}
+        if status_filter:
+            filters["status"] = status_filter
+        if search:
+            filters["server_name"] = ("like", f"%{search}%")
+
+        # Status counts (across all servers, before pagination/filters)
+        all_servers = frappe.get_list(
             "Go1 FCloud Server",
-            fields=["name", "server_name", "server_id"],
+            fields=["status"],
+            ignore_ifnull=True,
         )
-        local_by_id = {s["server_id"]: s for s in local_servers if s.get("server_id")}
-        local_by_name = {s["server_name"]: s for s in local_servers if s.get("server_name")}
+        status_counts = {}
+        for s in all_servers:
+            st = s.get("status") or ""
+            status_counts[st] = status_counts.get(st, 0) + 1
 
-        # Separate app servers and db servers
-        app_servers = []
-        db_servers = []
-        for s in cloud_servers:
-            server_id = s.get("name", "")
-            # Database server names start with "m", App server names start with "f"
-            if server_id.startswith("m"):
-                db_servers.append(s)
-            else:
-                app_servers.append(s)
+        total = len(all_servers)
+        active_count = status_counts.get("Active", 0)
+
+        # Filtered + paginated server list
+        server_records = frappe.get_list(
+            "Go1 FCloud Server",
+            filters=filters,
+            fields=[
+                "name", "server_name", "server_id", "status",
+                "region", "price", "vcpu", "memory", "disk",
+                "creation", "modified",
+            ],
+            order_by="modified desc",
+            start=start,
+            page_length=limit,
+            ignore_ifnull=True,
+        )
+
+        # Total count for the current filter set (for pagination)
+        total_filtered = frappe.db.count(
+            "Go1 FCloud Server", filters=filters
+        )
+        has_next = (start + limit) < total_filtered
 
         servers = []
-        for s in app_servers:
-            server_id = s.get("name", "")
-            title = s.get("title", "")
-            plan = s.get("plan") or {}
-            region_info = s.get("region_info") or {}
-            tags = s.get("tags") or []
-            local = local_by_id.get(server_id) or local_by_name.get(title) or {}
-
-            vcpu = plan.get("vcpu", 0)
-            memory = plan.get("memory", 0)
-            disk = plan.get("disk", 0)
+        for s in server_records:
+            vcpu = s.get("vcpu") or 0
+            memory = s.get("memory") or 0
+            disk = s.get("disk") or 0
 
             servers.append({
-                "name": local.get("name", "") or server_id,
-                "server_id": server_id,
-                "server_name": title,
+                "name": s.get("name", ""),
+                "server_id": s.get("server_id", ""),
+                "server_name": s.get("server_name", ""),
                 "status": s.get("status", ""),
-                "cluster": s.get("cluster", ""),
-                "region": region_info.get("title", s.get("cluster", "")),
-                "region_image": region_info.get("image", ""),
-                "tags": tags,
+                "region": s.get("region", ""),
                 "vcpu": vcpu,
                 "memory": memory,
                 "disk": disk,
                 "vcpu_display": f"{vcpu} vCPU" if vcpu else "",
                 "memory_display": f"{memory} GB RAM" if memory else "",
                 "disk_display": f"{disk} GB Disk" if disk else "",
-                "price": plan.get("price_inr", ""),
-                "plan_name": plan.get("name", ""),
-                "plan_title": plan.get("title", ""),
+                "price": s.get("price", ""),
                 "creation": s.get("creation", ""),
-                "app_server": s.get("app_server", ""),
+                "modified": s.get("modified", ""),
             })
 
-        return _ok(servers)
+        return _ok({
+            "permissions": {
+                "can_read": can_read,
+                "can_create": can_create,
+                "can_write": can_write,
+                "can_delete": can_delete,
+            },
+            "server_count": {
+                "total": total,
+                "active": active_count,
+            },
+            "status_list": [
+                {"status": "All", "count": total},
+                {"status": "Active", "count": active_count},
+            ],
+            "servers": servers,
+            "total_filtered": total_filtered,
+            "start": start,
+            "limit": limit,
+            "has_next": has_next,
+        })
+    except frappe.PermissionError:
+        return _err("Not permitted to access Go1 FCloud Server.")
     except Exception:
         frappe.log_error("mobile_api.get_servers", frappe.get_traceback())
         return _err("Failed to fetch servers.")
