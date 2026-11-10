@@ -1693,7 +1693,7 @@ def site_verify_dns(site_name, domain):
 
 
 @frappe.whitelist()
-def get_benches(status_filter=None, search=None, server=None):
+def get_benches(status_filter=None, search=None, server=None, start=0, limit=20):
     """
     List all benches fetched live from Frappe Cloud with status counts.
 
@@ -1701,9 +1701,11 @@ def get_benches(status_filter=None, search=None, server=None):
       status_filter: "Active" | "Awaiting Deploy" | "Update Available" | None (all)
       search:        substring search on bench title or id
       server:        filter by server name (e.g. "f953-mumbai.frappe.cloud")
+      start:         pagination offset (default 0)
+      limit:         page size (default 20)
     """
     try:
-        _require_role()
+        frappe.has_permission("Go1 FCloud Bench", "read", throw=True)
 
         # Fetch benches with computed status from bench.all
         # (status is a virtual field not returned by get_list)
@@ -1842,6 +1844,13 @@ def get_benches(status_filter=None, search=None, server=None):
                 "apps": bench_apps,
             })
 
+        # Pagination
+        start = frappe.utils.cint(start)
+        limit = frappe.utils.cint(limit) or 20
+        total_filtered = len(benches)
+        benches_page = benches[start : start + limit]
+        has_next = (start + limit) < total_filtered
+
         return _ok({
             "bench_count": {
                 "total": total,
@@ -1856,8 +1865,14 @@ def get_benches(status_filter=None, search=None, server=None):
                 {"status": "Update Available", "count": update_available_count},
             ],
             "servers": sorted(servers),
-            "benches": benches,
+            "benches": benches_page,
+            "total_filtered": total_filtered,
+            "start": start,
+            "limit": limit,
+            "has_next": has_next,
         })
+    except frappe.PermissionError:
+        return _err("Not permitted to access Go1 FCloud Bench.")
     except Exception:
         frappe.log_error("mobile_api.get_benches", frappe.get_traceback())
         return _err("Failed to fetch benches.")
