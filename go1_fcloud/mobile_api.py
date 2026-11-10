@@ -368,6 +368,15 @@ def get_sites(status_filter=None, search=None, server=None, start=0, limit=20):
         start = frappe.utils.cint(start)
         limit = frappe.utils.cint(limit) or 20
 
+        # Permission flags for the current user
+        can_read = frappe.has_permission("Go1 FCloud Site", "read")
+        can_create = frappe.has_permission("Go1 FCloud Site", "create")
+        can_write = frappe.has_permission("Go1 FCloud Site", "write")
+        can_delete = frappe.has_permission("Go1 FCloud Site", "delete")
+
+        if not can_read:
+            return _err("Not permitted to access Go1 FCloud Site.")
+
         # Build filters — frappe.get_list applies permission checks automatically
         attention_statuses = ["Broken", "Suspended"]
         filters = {"is_dropped": 0}
@@ -403,8 +412,8 @@ def get_sites(status_filter=None, search=None, server=None, start=0, limit=20):
             filters=filters,
             fields=[
                 "name", "site_name", "url", "status", "version",
-                "region", "plan", "bench", "bench_name",
-                "project", "creation", "modified",
+                "region", "plan", "group", "bench", "bench_name",
+                "bench_status", "project", "creation", "modified",
             ],
             order_by="modified desc",
             start=start,
@@ -428,14 +437,22 @@ def get_sites(status_filter=None, search=None, server=None, start=0, limit=20):
                 "version": s.get("version", ""),
                 "region": s.get("region", ""),
                 "plan": s.get("plan", ""),
+                "group": s.get("group", ""),
                 "bench": s.get("bench", ""),
                 "bench_name": s.get("bench_name", ""),
+                "bench_status": s.get("bench_status", ""),
                 "project": s.get("project", ""),
                 "creation": s.get("creation", ""),
                 "modified": s.get("modified", ""),
             })
 
         return _ok({
+            "permissions": {
+                "can_read": can_read,
+                "can_create": can_create,
+                "can_write": can_write,
+                "can_delete": can_delete,
+            },
             "site_count": {
                 "total": total,
                 "active": active_count,
@@ -1730,6 +1747,15 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
         start = frappe.utils.cint(start)
         limit = frappe.utils.cint(limit) or 20
 
+        # Permission flags for the current user
+        can_read = frappe.has_permission("Go1 FCloud Bench", "read")
+        can_create = frappe.has_permission("Go1 FCloud Bench", "create")
+        can_write = frappe.has_permission("Go1 FCloud Bench", "write")
+        can_delete = frappe.has_permission("Go1 FCloud Bench", "delete")
+
+        if not can_read:
+            return _err("Not permitted to access Go1 FCloud Bench.")
+
         # Build filters — frappe.get_list applies permission checks automatically
         filters = {"is_dropped": 0}
         if status_filter:
@@ -1813,6 +1839,12 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
             })
 
         return _ok({
+            "permissions": {
+                "can_read": can_read,
+                "can_create": can_create,
+                "can_write": can_write,
+                "can_delete": can_delete,
+            },
             "bench_count": {
                 "total": total,
                 "active": active_count,
