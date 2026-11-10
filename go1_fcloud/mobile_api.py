@@ -3036,6 +3036,7 @@ def get_servers(status_filter=None, search=None, start=0, limit=20):
             fields=[
                 "name", "server_name", "server_id", "status",
                 "region", "price", "vcpu", "memory", "disk",
+                "db_server_id", "db_price", "db_vcpu", "db_memory", "db_disk",
                 "creation", "modified",
             ],
             order_by="modified desc",
@@ -3055,6 +3056,9 @@ def get_servers(status_filter=None, search=None, start=0, limit=20):
             vcpu = s.get("vcpu") or 0
             memory = s.get("memory") or 0
             disk = s.get("disk") or 0
+            db_vcpu = s.get("db_vcpu") or 0
+            db_memory = s.get("db_memory") or 0
+            db_disk = s.get("db_disk") or 0
 
             servers.append({
                 "name": s.get("name", ""),
@@ -3062,15 +3066,28 @@ def get_servers(status_filter=None, search=None, start=0, limit=20):
                 "server_name": s.get("server_name", ""),
                 "status": s.get("status", ""),
                 "region": s.get("region", ""),
-                "vcpu": vcpu,
-                "memory": memory,
-                "disk": disk,
-                "vcpu_display": f"{vcpu} vCPU" if vcpu else "",
-                "memory_display": f"{memory} GB RAM" if memory else "",
-                "disk_display": f"{disk} GB Disk" if disk else "",
-                "price": s.get("price", ""),
                 "creation": s.get("creation", ""),
                 "modified": s.get("modified", ""),
+                "app_server": {
+                    "server_id": s.get("server_id", ""),
+                    "vcpu": vcpu,
+                    "memory": memory,
+                    "disk": disk,
+                    "vcpu_display": f"{vcpu} vCPU" if vcpu else "",
+                    "memory_display": f"{memory} GB RAM" if memory else "",
+                    "disk_display": f"{disk} GB Disk" if disk else "",
+                    "price": s.get("price", ""),
+                },
+                "db_server": {
+                    "server_id": s.get("db_server_id", ""),
+                    "vcpu": db_vcpu,
+                    "memory": db_memory,
+                    "disk": db_disk,
+                    "vcpu_display": f"{db_vcpu} vCPU" if db_vcpu else "",
+                    "memory_display": f"{db_memory} GB RAM" if db_memory else "",
+                    "disk_display": f"{db_disk} GB Disk" if db_disk else "",
+                    "price": s.get("db_price", ""),
+                },
             })
 
         return _ok({

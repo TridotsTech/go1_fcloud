@@ -1,6 +1,8 @@
 # Copyright (c) 2024, Tridots Tech and contributors
 # For license information, please see license.txt
 
+import re
+
 import frappe
 from frappe.model.document import Document
 from go1_fcloud.utils import cloud_get
@@ -18,66 +20,122 @@ def sync_server_enqueue():
         frappe.log_error("sync server enqueue error", frappe.get_traceback())
 
 
+def _extract_server_number(server_id):
+    """Extract the numeric part from a server ID like 'f960-mumbai' or 'm960-mumbai'.
+
+    Returns the number string (e.g. '960') or None.
+    """
+    m = re.match(r"^[fm](\d+)", server_id or "")
+    return m.group(1) if m else None
+
+
 def sync_server():
     from go1_fcloud.utils import unwrap
 
     try:
         cloud_servers = unwrap(cloud_get("press.api.server.all")) or []
+
+        # Separate app servers (f-prefix) and db servers (m-prefix)
+        app_servers = []
+        db_servers_by_num = {}
+        for s in cloud_servers:
+            server_id = s.get("name", "")
+            if server_id.startswith("m"):
+                num = _extract_server_number(server_id)
+                if num:
+                    db_servers_by_num[num] = s
+            else:
+                app_servers.append(s)
+
+        # Build local lookup
         local_servers = frappe.get_all(
-            "Go1 FCloud Server", fields=["name", "server_name", "server_id"]
+            "Go1 FCloud Server",
+            fields=["name", "server_name", "server_id", "db_server_id"],
         )
-        local_by_name = {s["server_name"]: s["name"] for s in local_servers if s.get("server_name")}
         local_by_id = {s["server_id"]: s["name"] for s in local_servers if s.get("server_id")}
+        local_by_name = {s["server_name"]: s["name"] for s in local_servers if s.get("server_name")}
 
-        for i in cloud_servers:
-            title = i.get("title", "")
-            server_id = i.get("name", "")
-            plan = i.get("plan") or {}
+        # Create/update one doc per app server, paired with its db server
+        for app in app_servers:
+            title = app.get("title", "")
+            app_id = app.get("name", "")
+            app_plan = app.get("plan") or {}
 
-            # Match by server_id first, then by title
-            local_name = local_by_id.get(server_id) or local_by_name.get(title)
+            # Find paired db server by matching number (f960 ↔ m960)
+            num = _extract_server_number(app_id)
+            db = db_servers_by_num.get(num, {}) if num else {}
+            db_id = db.get("name", "")
+            db_plan = db.get("plan") or {}
+
+            # Match existing local doc
+            local_name = local_by_id.get(app_id) or local_by_name.get(title)
             if local_name:
-                # Update status and key fields for existing servers
-                doc = frappe.get_doc("Go1 FCloud Server", local_name)
-                doc.status = i.get("status", "")
-                doc.region = i.get("cluster", "")
-                if plan:
-                    doc.price = plan.get("price_inr", "")
-                    doc.vcpu = plan.get("vcpu", "")
-                    doc.memory = plan.get("memory", "")
-                    doc.disk = plan.get("disk", "")
-                if server_id and not doc.server_id:
-                    doc.server_id = server_id
-                doc.save(ignore_permissions=True)
-                frappe.db.commit()
+                try:
+                    doc = frappe.get_doc("Go1 FCloud Server", local_name)
+                    doc.status = app.get("status", "")
+                    doc.region = app.get("cluster", "")
+                    if app_id and not doc.server_id:
+                        doc.server_id = app_id
+                    # App plan
+                    if app_plan:
+                        doc.price = app_plan.get("price_inr", "")
+                        doc.vcpu = app_plan.get("vcpu", "")
+                        doc.memory = app_plan.get("memory", "")
+                        doc.disk = app_plan.get("disk", "")
+                    # DB server
+                    if db_id:
+                        doc.db_server_id = db_id
+                    if db_plan:
+                        doc.db_price = db_plan.get("price_inr", "")
+                        doc.db_vcpu = db_plan.get("vcpu", "")
+                        doc.db_memory = db_plan.get("memory", "")
+                        doc.db_disk = db_plan.get("disk", "")
+                    doc.save(ignore_permissions=True)
+                    frappe.db.commit()
+                except Exception:
+                    frappe.log_error(
+                        f"sync_server:update:{app_id}", frappe.get_traceback()
+                    )
                 continue
 
-            # Create new server doc (even without plan data)
-            server_doc = frappe.new_doc("Go1 FCloud Server")
-            server_doc.status = i.get("status", "")
-            server_doc.region = i.get("cluster", "")
-            server_doc.server_name = title
-            server_doc.server_id = server_id
-            if plan:
-                server_doc.price = plan.get("price_inr", "")
-                server_doc.vcpu = plan.get("vcpu", "")
-                server_doc.memory = plan.get("memory", "")
-                server_doc.disk = plan.get("disk", "")
-            server_doc.insert(ignore_permissions=True)
-            frappe.db.commit()
+            # Create new server doc
+            try:
+                doc = frappe.new_doc("Go1 FCloud Server")
+                doc.server_name = title
+                doc.server_id = app_id
+                doc.status = app.get("status", "")
+                doc.region = app.get("cluster", "")
+                if app_plan:
+                    doc.price = app_plan.get("price_inr", "")
+                    doc.vcpu = app_plan.get("vcpu", "")
+                    doc.memory = app_plan.get("memory", "")
+                    doc.disk = app_plan.get("disk", "")
+                if db_id:
+                    doc.db_server_id = db_id
+                if db_plan:
+                    doc.db_price = db_plan.get("price_inr", "")
+                    doc.db_vcpu = db_plan.get("vcpu", "")
+                    doc.db_memory = db_plan.get("memory", "")
+                    doc.db_disk = db_plan.get("disk", "")
+                doc.insert(ignore_permissions=True)
+                frappe.db.commit()
+            except Exception:
+                frappe.log_error(
+                    f"sync_server:create:{app_id}", frappe.get_traceback()
+                )
 
         # Remove local servers not in cloud
         local_servers = frappe.get_all(
             "Go1 FCloud Server", fields=["name", "server_name", "server_id"]
         )
-        cloud_titles = {s.get("title", "") for s in cloud_servers}
-        cloud_titles.discard("")
-        cloud_ids = {s.get("name", "") for s in cloud_servers}
-        cloud_ids.discard("")
+        cloud_app_titles = {s.get("title", "") for s in app_servers}
+        cloud_app_titles.discard("")
+        cloud_app_ids = {s.get("name", "") for s in app_servers}
+        cloud_app_ids.discard("")
 
         for local in local_servers:
-            title_match = local.get("server_name") and local["server_name"] in cloud_titles
-            id_match = local.get("server_id") and local["server_id"] in cloud_ids
+            title_match = local.get("server_name") and local["server_name"] in cloud_app_titles
+            id_match = local.get("server_id") and local["server_id"] in cloud_app_ids
             if not title_match and not id_match:
                 try:
                     frappe.delete_doc(

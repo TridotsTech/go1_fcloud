@@ -14,13 +14,23 @@
   "server_id",
   "section_break_armxp",
   "region",
+  "app_server_section",
   "price",
   "server_specifications_section",
   "vcpu",
   "column_break_mkjs3",
   "memory",
   "column_break_zemhk",
-  "disk"
+  "disk",
+  "db_server_section",
+  "db_server_id",
+  "db_price",
+  "db_specs_section",
+  "db_vcpu",
+  "column_break_db1",
+  "db_memory",
+  "column_break_db2",
+  "db_disk"
  ],
  "fields": [
   {
@@ -40,24 +50,29 @@
    "label": "Region"
   },
   {
+   "fieldname": "app_server_section",
+   "fieldtype": "Section Break",
+   "label": "Application Server"
+  },
+  {
    "fieldname": "price",
    "fieldtype": "Data",
-   "label": "Price"
+   "label": "App Price"
   },
   {
    "fieldname": "vcpu",
    "fieldtype": "Data",
-   "label": "VCPU"
+   "label": "App vCPU"
   },
   {
    "fieldname": "memory",
    "fieldtype": "Data",
-   "label": "Memory"
+   "label": "App Memory"
   },
   {
    "fieldname": "disk",
    "fieldtype": "Data",
-   "label": "Disk"
+   "label": "App Disk"
   },
   {
    "fieldname": "column_break_1ecxl",
@@ -74,7 +89,7 @@
   {
    "fieldname": "server_specifications_section",
    "fieldtype": "Section Break",
-   "label": "Server Specifications"
+   "label": "App Server Specifications"
   },
   {
    "fieldname": "column_break_mkjs3",
@@ -87,7 +102,50 @@
   {
    "fieldname": "server_id",
    "fieldtype": "Data",
-   "label": "ID"
+   "label": "App Server ID"
+  },
+  {
+   "fieldname": "db_server_section",
+   "fieldtype": "Section Break",
+   "label": "Database Server"
+  },
+  {
+   "fieldname": "db_server_id",
+   "fieldtype": "Data",
+   "label": "DB Server ID"
+  },
+  {
+   "fieldname": "db_price",
+   "fieldtype": "Data",
+   "label": "DB Price"
+  },
+  {
+   "fieldname": "db_specs_section",
+   "fieldtype": "Section Break",
+   "label": "DB Server Specifications"
+  },
+  {
+   "fieldname": "db_vcpu",
+   "fieldtype": "Data",
+   "label": "DB vCPU"
+  },
+  {
+   "fieldname": "db_memory",
+   "fieldtype": "Data",
+   "label": "DB Memory"
+  },
+  {
+   "fieldname": "db_disk",
+   "fieldtype": "Data",
+   "label": "DB Disk"
+  },
+  {
+   "fieldname": "column_break_db1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_db2",
+   "fieldtype": "Column Break"
   }
  ],
  "index_web_pages_for_search": 1,
@@ -97,7 +155,7 @@
    "link_fieldname": "server"
   }
  ],
- "modified": "2024-05-23 10:46:26.795516",
+ "modified": "2026-11-10 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Server",
