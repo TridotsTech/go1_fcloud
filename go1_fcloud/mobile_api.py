@@ -1695,161 +1695,104 @@ def site_verify_dns(site_name, domain):
 @frappe.whitelist()
 def get_benches(status_filter=None, search=None, server=None, start=0, limit=20):
     """
-    List all benches fetched live from Frappe Cloud with status counts.
+    List benches from local Go1 FCloud Bench doctype with permission checks.
+
+    Uses ``frappe.get_list`` which automatically enforces the Role Permission
+    Manager rules defined on Go1 FCloud Bench (System Manager, FCloud,
+    FCloud Admin).
 
     Args:
       status_filter: "Active" | "Awaiting Deploy" | "Update Available" | None (all)
       search:        substring search on bench title or id
-      server:        filter by server name (e.g. "f953-mumbai.frappe.cloud")
+      server:        filter by Go1 FCloud Server link
       start:         pagination offset (default 0)
       limit:         page size (default 20)
     """
     try:
-        frappe.has_permission("Go1 FCloud Bench", "read", throw=True)
+        start = frappe.utils.cint(start)
+        limit = frappe.utils.cint(limit) or 20
 
-        # Fetch benches with computed status from bench.all
-        # (status is a virtual field not returned by get_list)
-        all_benches_status = (
-            unwrap(
-                cloud_post(
-                    "press.api.bench.all",
-                    {"bench_filter": {"status": "All", "tag": ""}},
-                )
-            )
-            or []
-        )
-        status_map = {
-            b.get("name", ""): b.get("status", "")
-            for b in all_benches_status
-        }
-
-        # Use press.api.client.get_list with Release Group doctype
-        # for detailed nested fields (apps, servers) and server-side filtering.
-        filters = {}
+        # Build filters — frappe.get_list applies permission checks automatically
+        filters = {"is_dropped": 0}
+        if status_filter:
+            filters["status"] = status_filter
         if server:
             filters["server"] = server
+        if search:
+            filters["bench"] = ("like", f"%{search}%")
 
-        cloud_benches = (
-            unwrap(
-                cloud_post(
-                    "press.api.client.get_list",
-                    {
-                        "doctype": "Release Group",
-                        "fields": [
-                            "name",
-                            {"apps": ["app"]},
-                            {"servers": ["server"]},
-                            "title",
-                            "active_benches",
-                            "version",
-                            "creation",
-                            "site_count",
-                        ],
-                        "filters": filters,
-                        "limit_page_length": 0,
-                    },
-                )
-            )
-            or []
-        )
-
-        # Fetch last deploy date per group from the latest Bench (deployed version)
-        bench_dates = (
-            unwrap(
-                cloud_post(
-                    "press.api.client.get_list",
-                    {
-                        "doctype": "Bench",
-                        "fields": ["group", "max(creation) as last_deploy"],
-                        "filters": {"status": ("!=", "Archived")},
-                        "group_by": "group",
-                        "limit_page_length": 0,
-                    },
-                )
-            )
-            or []
-        )
-        last_deploy_map = {
-            d.get("group", ""): d.get("last_deploy", "")
-            for d in bench_dates
-        }
-
-        # Build local doc lookup for linking local doc name
-        local_benches = frappe.get_all(
+        # Status counts (across all benches, before pagination/filters)
+        all_benches = frappe.get_list(
             "Go1 FCloud Bench",
             filters={"is_dropped": 0},
-            fields=["name", "bench", "id", "project"],
+            fields=["status"],
+            ignore_ifnull=True,
         )
-        local_by_id = {b["id"]: b for b in local_benches if b.get("id")}
-        local_by_title = {b["bench"]: b for b in local_benches if b.get("bench")}
-
-        # Collect unique server names for the filter dropdown
-        servers = set()
-        for b in cloud_benches:
-            for srv_entry in (b.get("servers") or []):
-                srv = srv_entry.get("server") or ""
-                if srv:
-                    servers.add(srv)
-
-        # Count statuses across all benches (before status/search filtering)
-        # Use status_map (from bench.all) since get_list doesn't return computed status
         status_counts = {}
-        for b in cloud_benches:
-            st = status_map.get(b.get("name", ""), "")
+        for b in all_benches:
+            st = b.get("status") or ""
             status_counts[st] = status_counts.get(st, 0) + 1
 
-        total = len(cloud_benches)
+        total = len(all_benches)
         active_count = status_counts.get("Active", 0)
         awaiting_deploy_count = status_counts.get("Awaiting Deploy", 0)
         update_available_count = status_counts.get("Update Available", 0)
 
+        # Filtered + paginated bench list
+        bench_records = frappe.get_list(
+            "Go1 FCloud Bench",
+            filters=filters,
+            fields=[
+                "name", "bench", "id", "status", "version",
+                "region", "server", "project", "noof_apps",
+                "creation", "modified",
+            ],
+            order_by="modified desc",
+            start=start,
+            page_length=limit,
+            ignore_ifnull=True,
+        )
+
+        # Total count for the current filter set (for pagination)
+        total_filtered = frappe.count(
+            "Go1 FCloud Bench", filters=filters
+        )
+        has_next = (start + limit) < total_filtered
+
+        # Collect unique servers for filter dropdown
+        server_list = frappe.get_list(
+            "Go1 FCloud Bench",
+            filters={"is_dropped": 0, "server": ("is", "set")},
+            fields=["distinct server as server"],
+            ignore_ifnull=True,
+        )
+        servers = sorted(s["server"] for s in server_list if s.get("server"))
+
+        # Build response
         benches = []
-        for b in cloud_benches:
-            bench_id = b.get("name", "")
-            title = b.get("title", "")
-            status = status_map.get(bench_id, "")
-
-            if status_filter and status != status_filter:
-                continue
-
-            if search:
-                q = search.lower()
-                if q not in title.lower() and q not in bench_id.lower():
-                    continue
-
-            local = local_by_id.get(bench_id) or local_by_title.get(title) or {}
-
-            # Extract server names from nested servers list
-            bench_servers = [
-                s.get("server", "") for s in (b.get("servers") or [])
-            ]
-            # Extract app names from nested apps list
-            bench_apps = [
-                a.get("app", "") for a in (b.get("apps") or [])
-            ]
+        for b in bench_records:
+            # Fetch apps from child table
+            apps = frappe.get_all(
+                "Apps",
+                filters={"parent": b["name"], "parenttype": "Go1 FCloud Bench"},
+                fields=["title"],
+            )
+            app_names = [a["title"] for a in apps if a.get("title")]
 
             benches.append({
-                "name": local.get("name", ""),
-                "bench_id": bench_id,
-                "title": title,
-                "status": status,
+                "name": b.get("name", ""),
+                "bench_id": b.get("id", ""),
+                "title": b.get("bench", ""),
+                "status": b.get("status", ""),
                 "version": b.get("version", ""),
-                "project": local.get("project", ""),
+                "region": b.get("region", ""),
+                "server": b.get("server", ""),
+                "project": b.get("project", ""),
                 "creation": b.get("creation", ""),
-                "last_deploy": last_deploy_map.get(bench_id, ""),
-                "app_count": len(bench_apps),
-                "site_count": b.get("site_count", 0),
-                "active_benches": b.get("active_benches", 0),
-                "servers": bench_servers,
-                "apps": bench_apps,
+                "modified": b.get("modified", ""),
+                "app_count": b.get("noof_apps") or len(app_names),
+                "apps": app_names,
             })
-
-        # Pagination
-        start = frappe.utils.cint(start)
-        limit = frappe.utils.cint(limit) or 20
-        total_filtered = len(benches)
-        benches_page = benches[start : start + limit]
-        has_next = (start + limit) < total_filtered
 
         return _ok({
             "bench_count": {
@@ -1864,8 +1807,8 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
                 {"status": "Awaiting Deploy", "count": awaiting_deploy_count},
                 {"status": "Update Available", "count": update_available_count},
             ],
-            "servers": sorted(servers),
-            "benches": benches_page,
+            "servers": servers,
+            "benches": benches,
             "total_filtered": total_filtered,
             "start": start,
             "limit": limit,
