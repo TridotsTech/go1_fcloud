@@ -348,79 +348,91 @@ def _normalise_activity_status(raw):
 
 
 @frappe.whitelist()
-def get_sites(status_filter=None, search=None, server=None):
+def get_sites(status_filter=None, search=None, server=None, start=0, limit=20):
     """
-    List all sites fetched live from Frappe Cloud with status counts.
+    List sites from local Go1 FCloud Site doctype with permission checks.
+
+    Uses ``frappe.get_list`` which automatically enforces the Role Permission
+    Manager rules defined on Go1 FCloud Site (System Manager, FCloud,
+    FCloud Admin).
 
     Args:
       status_filter: "Active" | "Inactive" | "Suspended" | "Broken" | "Attention" | None (all)
                      "Attention" matches both Broken and Suspended sites.
       search:        substring search on site name
-      server:        filter by server name (e.g. "f953-mumbai.frappe.cloud")
+      server:        filter by server name
+      start:         pagination offset (default 0)
+      limit:         page size (default 20)
     """
     try:
-        _require_role()
+        start = frappe.utils.cint(start)
+        limit = frappe.utils.cint(limit) or 20
 
-        cloud_sites = unwrap(cloud_post("press.api.site.all")) or []
-
-        # Client-side server filter
+        # Build filters — frappe.get_list applies permission checks automatically
+        attention_statuses = ["Broken", "Suspended"]
+        filters = {"is_dropped": 0}
+        if status_filter:
+            if status_filter == "Attention":
+                filters["status"] = ("in", attention_statuses)
+            else:
+                filters["status"] = status_filter
         if server:
-            cloud_sites = [s for s in cloud_sites if s.get("server") == server]
+            filters["bench"] = server
+        if search:
+            filters["url"] = ("like", f"%{search}%")
 
-        # Build local doc lookup for linking local doc name
-        local_sites = frappe.get_all(
+        # Status counts (across all sites, before pagination/filters)
+        all_sites = frappe.get_list(
             "Go1 FCloud Site",
             filters={"is_dropped": 0},
-            fields=["name", "url", "bench_name", "project"],
+            fields=["status"],
+            ignore_ifnull=True,
         )
-        local_by_url = {s["url"]: s for s in local_sites}
-
-        # Count statuses across all sites (after server filter, before status/search)
-        attention_statuses = {"Broken", "Suspended"}
         status_counts = {}
-        for s in cloud_sites:
-            st = s.get("status", "")
+        for s in all_sites:
+            st = s.get("status") or ""
             status_counts[st] = status_counts.get(st, 0) + 1
 
-        total = len(cloud_sites)
+        total = len(all_sites)
         active_count = status_counts.get("Active", 0)
         attention_count = sum(status_counts.get(s, 0) for s in attention_statuses)
 
+        # Filtered + paginated site list
+        site_records = frappe.get_list(
+            "Go1 FCloud Site",
+            filters=filters,
+            fields=[
+                "name", "site_name", "url", "status", "version",
+                "region", "plan", "bench", "bench_name",
+                "project", "creation", "modified",
+            ],
+            order_by="modified desc",
+            start=start,
+            page_length=limit,
+            ignore_ifnull=True,
+        )
+
+        # Total count for the current filter set (for pagination)
+        total_filtered = frappe.db.count(
+            "Go1 FCloud Site", filters=filters
+        )
+        has_next = (start + limit) < total_filtered
+
         sites = []
-        for s in cloud_sites:
-            site_name = s.get("name", "")
-            status = s.get("status", "")
-
-            # Filter by status
-            if status_filter:
-                if status_filter == "Attention":
-                    if status not in attention_statuses:
-                        continue
-                elif status != status_filter:
-                    continue
-
-            if search:
-                q = search.lower()
-                if q not in site_name.lower() and q not in s.get("title", "").lower():
-                    continue
-
-            plan = s.get("plan") or {}
-            local = local_by_url.get(site_name, {})
-
+        for s in site_records:
             sites.append({
-                "name": local.get("name", "") or site_name,
-                "site_name": site_name,
-                "title": s.get("title", ""),
-                "status": status,
+                "name": s.get("name", ""),
+                "site_name": s.get("url", "") or s.get("site_name", ""),
+                "title": s.get("site_name", ""),
+                "status": s.get("status", ""),
                 "version": s.get("version", ""),
-                "region": s.get("cluster", ""),
-                "server": s.get("server", ""),
-                "plan": plan.get("name", "") if isinstance(plan, dict) else plan,
-                "bench": s.get("group", ""),
-                "bench_name": local.get("bench_name", ""),
-                "project": local.get("project", ""),
+                "region": s.get("region", ""),
+                "plan": s.get("plan", ""),
+                "bench": s.get("bench", ""),
+                "bench_name": s.get("bench_name", ""),
+                "project": s.get("project", ""),
                 "creation": s.get("creation", ""),
-                "app_count": s.get("app_count", 0),
+                "modified": s.get("modified", ""),
             })
 
         return _ok({
@@ -438,7 +450,13 @@ def get_sites(status_filter=None, search=None, server=None):
                 {"status": "Broken", "count": status_counts.get("Broken", 0)},
             ],
             "sites": sites,
+            "total_filtered": total_filtered,
+            "start": start,
+            "limit": limit,
+            "has_next": has_next,
         })
+    except frappe.PermissionError:
+        return _err("Not permitted to access Go1 FCloud Site.")
     except Exception:
         frappe.log_error("mobile_api.get_sites", frappe.get_traceback())
         return _err("Failed to fetch sites.")
