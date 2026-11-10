@@ -47,7 +47,26 @@ def sync_server():
             else:
                 app_servers.append(s)
 
-        # Build local lookup
+        # Step 1: Remove stale DB-only docs (m-prefix server_id) created by old sync
+        existing = frappe.get_all(
+            "Go1 FCloud Server",
+            fields=["name", "server_id"],
+        )
+        for row in existing:
+            sid = row.get("server_id") or ""
+            if sid.startswith("m"):
+                try:
+                    frappe.delete_doc(
+                        "Go1 FCloud Server", row["name"],
+                        ignore_permissions=True, force=True,
+                    )
+                except Exception:
+                    frappe.log_error(
+                        f"sync_server:pre_cleanup:{row['name']}", frappe.get_traceback()
+                    )
+        frappe.db.commit()
+
+        # Step 2: Build local lookup (after pre-cleanup)
         local_servers = frappe.get_all(
             "Go1 FCloud Server",
             fields=["name", "server_name", "server_id", "db_server_id"],
@@ -55,7 +74,7 @@ def sync_server():
         local_by_id = {s["server_id"]: s["name"] for s in local_servers if s.get("server_id")}
         local_by_name = {s["server_name"]: s["name"] for s in local_servers if s.get("server_name")}
 
-        # Create/update one doc per app server, paired with its db server
+        # Step 3: Create/update one doc per app server, paired with its db server
         for app in app_servers:
             title = app.get("title", "")
             app_id = app.get("name", "")
@@ -124,7 +143,7 @@ def sync_server():
                     f"sync_server:create:{app_id}", frappe.get_traceback()
                 )
 
-        # Remove local servers not in cloud
+        # Step 4: Remove local servers not in cloud
         local_servers = frappe.get_all(
             "Go1 FCloud Server", fields=["name", "server_name", "server_id"]
         )
