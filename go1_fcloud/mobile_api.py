@@ -4411,7 +4411,7 @@ def get_doctype_permissions(doctypes=None):
             if dt and dt not in requested:
                 requested.append(dt)
 
-        rights = frappe.permissions.get_rights()
+        rights = frappe.permissions.rights
         data = {}
         for dt in requested:
             try:
