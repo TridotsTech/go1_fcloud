@@ -728,22 +728,30 @@ def sync_site():
     except Exception:
         frappe.log_error("sync_site:process", frappe.get_traceback())
 
-    # ----- Step 4: Mark stale local sites as dropped (always runs) -----
+    # ----- Step 4: Remove stale local sites not in cloud (always runs) -----
     try:
         # Re-fetch to include any newly created records
         local_sites = frappe.get_all(
-            "Go1 FCloud Site", filters={"is_dropped": 0}, fields=["url", "name"]
+            "Go1 FCloud Site", fields=["url", "name"]
         )
         cloud_urls = {s.get("name", "") for s in cloud_sites}
         cloud_urls.discard("")
 
         for local in local_sites:
             local_url = local.get("url")
-            # Mark as dropped if: no URL (incomplete record) OR URL not on cloud
+            # Delete if: no URL (incomplete record) OR URL not on cloud
             if not local_url or local_url not in cloud_urls:
-                frappe.db.set_value(
-                    "Go1 FCloud Site", local["name"], "is_dropped", 1
-                )
+                try:
+                    frappe.delete_doc(
+                        "Go1 FCloud Site",
+                        local["name"],
+                        ignore_permissions=True,
+                        force=True,
+                    )
+                except Exception:
+                    frappe.log_error(
+                        f"sync_site:delete:{local['name']}", frappe.get_traceback()
+                    )
         frappe.db.commit()
     except Exception:
         frappe.log_error("sync_site:cleanup", frappe.get_traceback())
