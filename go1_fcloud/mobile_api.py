@@ -311,16 +311,11 @@ def dashboard(activity_filter=None):
                 "active": sum(1 for s in all_servers if s.get("status") == "Active"),
             }
 
-        # --- Recent Activity (from cloud jobs, gated by site read permission) ---
+        # --- Recent Activity (from Frappe Cloud jobs) ---
         activities = []
         if site_perms["can_read"]:
-            site_records = frappe.get_all(
-                "Go1 FCloud Site",
-                fields=["name", "url"],
-                ignore_ifnull=True,
-            )
-            site_url_map = {s["name"]: s.get("url") or s["name"] for s in site_records}
-            site_names = [s["name"] for s in site_records]
+            cloud_sites = unwrap(cloud_post("press.api.site.all")) or []
+            site_names = [s.get("name") for s in cloud_sites if s.get("name")]
 
             for site_name in site_names[:10]:
                 try:
@@ -345,7 +340,7 @@ def dashboard(activity_filter=None):
                                     (j.get("status") or "").strip()
                                 ),
                                 "type": "site",
-                                "site": site_url_map.get(site_name, site_name),
+                                "site": site_name,
                                 "creation": j.get("creation") or "",
                                 "reason": "",
                             }
