@@ -1387,9 +1387,30 @@ def get_site_options(bench_name=None):
                     "image": detail.get("image", ""),
                 })
 
+        # Format plans with pricing fields
+        formatted_plans = []
+        for p in plans:
+            price_inr = p.get("price_inr", 0) or 0
+            price_usd = p.get("price_usd", 0) or 0
+            formatted_plans.append({
+                "name": p.get("name", ""),
+                "plan_title": p.get("plan_title", ""),
+                "price_inr": price_inr,
+                "price_usd": price_usd,
+                "cpu_time_per_day": p.get("cpu_time_per_day", 0),
+                "max_storage_usage": p.get("max_storage_usage", 0),
+                "max_database_usage": p.get("max_database_usage", 0),
+                "support_included": p.get("support_included", 0),
+                "offsite_backups": p.get("offsite_backups", 0),
+                "database_access": p.get("database_access", 0),
+                "monitor_access": p.get("monitor_access", 0),
+                "clusters": p.get("clusters", []),
+                "cloud_providers": p.get("cloud_providers", []),
+            })
+
         # Extract unique providers from plans
         providers = set()
-        for p in plans:
+        for p in formatted_plans:
             for cp in p.get("cloud_providers", []):
                 providers.add(cp)
 
@@ -1421,7 +1442,7 @@ def get_site_options(bench_name=None):
                 "regions": regions,
                 "versions": versions,
                 "marketplace_apps": all_apps,
-                "plans": plans,
+                "plans": formatted_plans,
                 "filters": {
                     "providers": sorted(providers),
                 },
