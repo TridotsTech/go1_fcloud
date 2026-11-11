@@ -1132,6 +1132,10 @@ def get_site_backups(name):
                 "public_url": b.get("public_url", ""),
                 "private_url": b.get("private_url", ""),
                 "config_file_url": b.get("config_file_url", ""),
+                "remote_database_file": b.get("remote_database_file", ""),
+                "remote_public_file": b.get("remote_public_file", ""),
+                "remote_private_file": b.get("remote_private_file", ""),
+                "remote_config_file": b.get("remote_config_file", ""),
             })
 
         return _ok(backups)
@@ -1201,44 +1205,72 @@ def get_site_backup_download_link(name, backup, file_type="database"):
 
 
 @frappe.whitelist()
-def site_restore(name, backup=None, database_file=None, public_file=None, private_file=None):
+def site_restore(name, backup=None, database_file=None, public_file=None, private_file=None, skip_failing_patches=False):
     """
-    Restore a site from an existing backup or uploaded files.
+    Restore a site from an existing backup or Remote File references.
 
     Args:
       name:           Go1 FCloud Site doc name or Frappe Cloud site name
-      backup:         Backup name to restore from (e.g. "2026-10-25 12:00:00.000000")
-      database_file:  URL of database backup file (for restore from files)
-      public_file:    URL of public files backup (optional, for restore from files)
-      private_file:   URL of private files backup (optional, for restore from files)
+      backup:         Site Backup document name (from get_site_backups "name" field)
+      database_file:  Remote File document name for database backup
+      public_file:    Remote File document name for public files (optional)
+      private_file:   Remote File document name for private files (optional)
+      skip_failing_patches: Skip failing patches during restore (default False)
 
     Either 'backup' OR 'database_file' must be provided.
+    When 'backup' is provided, the Remote File names are resolved
+    automatically from the backup record.
     """
     try:
         _require_role()
         cloud_name = _resolve_site(name)
 
         if not backup and not database_file:
-            return _err("Either backup name or database_file URL is required.")
+            return _err("Either backup name or database_file is required.")
 
-        params = {"name": cloud_name}
+        files = {}
 
         if backup:
-            # Restore from an existing site backup
-            params["files"] = {
-                "database": backup,
-            }
+            # Look up the backup to get its Remote File names
+            all_backups = unwrap(
+                cloud_get("press.api.site.backups", {"name": cloud_name})
+            ) or []
+
+            backup_data = None
+            for b in all_backups:
+                if b.get("name") == backup:
+                    backup_data = b
+                    break
+
+            if not backup_data:
+                return _err(f"Backup '{backup}' not found for this site.")
+
+            # Use Remote File document names (required by press.api.site.restore)
+            if backup_data.get("remote_database_file"):
+                files["database"] = backup_data["remote_database_file"]
+            if backup_data.get("remote_public_file"):
+                files["public"] = backup_data["remote_public_file"]
+            if backup_data.get("remote_private_file"):
+                files["private"] = backup_data["remote_private_file"]
+            if backup_data.get("remote_config_file"):
+                files["config"] = backup_data["remote_config_file"]
+
+            if not files.get("database"):
+                return _err("No remote database file found for this backup.")
         else:
-            # Restore from uploaded / remote files
-            files = {"database": database_file}
+            # Restore from Remote File references directly
+            files["database"] = database_file
             if public_file:
                 files["public"] = public_file
             if private_file:
                 files["private"] = private_file
-            params["files"] = files
 
         result = unwrap(
-            cloud_post("press.api.site.restore", params)
+            cloud_post("press.api.site.restore", {
+                "name": cloud_name,
+                "files": files,
+                "skip_failing_patches": skip_failing_patches,
+            })
         )
         return _ok(result)
     except frappe.ValidationError as e:
