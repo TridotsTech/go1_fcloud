@@ -900,15 +900,21 @@ def get_site_plans(name):
 
         plans = []
         for p in all_plans:
+            price_inr = p.get("price_inr", 0) or 0
+            price_usd = p.get("price_usd", 0) or 0
+            # Keep the current plan even if ₹0; skip other ₹0 plans
+            is_current = p.get("name", "") == current_plan_name
+            if not price_inr and not price_usd and not is_current:
+                continue
             plans.append({
                 "name": p.get("name", ""),
                 "plan_title": p.get("plan_title", ""),
-                "price_inr": p.get("price_inr", 0),
-                "price_usd": p.get("price_usd", 0),
+                "price_inr": price_inr,
+                "price_usd": price_usd,
                 "cpu_time_per_day": p.get("cpu_time_per_day", 0),
                 "max_storage_usage": p.get("max_storage_usage", 0),
                 "max_database_usage": p.get("max_database_usage", 0),
-                "is_current": p.get("name", "") == current_plan_name,
+                "is_current": is_current,
             })
 
         return _ok({
@@ -1387,11 +1393,13 @@ def get_site_options(bench_name=None):
                     "image": detail.get("image", ""),
                 })
 
-        # Format plans with pricing fields
+        # Format plans with pricing fields (skip ₹0 plans)
         formatted_plans = []
         for p in plans:
             price_inr = p.get("price_inr", 0) or 0
             price_usd = p.get("price_usd", 0) or 0
+            if not price_inr and not price_usd:
+                continue
             formatted_plans.append({
                 "name": p.get("name", ""),
                 "plan_title": p.get("plan_title", ""),
@@ -3704,8 +3712,8 @@ def get_server_options():
                 "platform_display": "ARM" if platform == "arm64" else "x86" if platform else "",
             }
 
-        app_plans = [_fmt_plan(p) for p in raw_app_plans]
-        db_plans = [_fmt_plan(p) for p in raw_db_plans]
+        app_plans = [_fmt_plan(p) for p in raw_app_plans if (p.get("price_inr") or p.get("price_usd"))]
+        db_plans = [_fmt_plan(p) for p in raw_db_plans if (p.get("price_inr") or p.get("price_usd"))]
 
         for plan in app_plans + db_plans:
             if not plan.get("plan_type"):
