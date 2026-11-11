@@ -3712,72 +3712,36 @@ def get_server_options():
                 "platform_display": "ARM" if platform == "arm64" else "x86" if platform else "",
             }
 
-        app_plans = [_fmt_plan(p) for p in raw_app_plans if (p.get("price_inr") or p.get("price_usd"))]
-        db_plans = [_fmt_plan(p) for p in raw_db_plans if (p.get("price_inr") or p.get("price_usd"))]
+        all_app_plans = [_fmt_plan(p) for p in raw_app_plans if (p.get("price_inr") or p.get("price_usd"))]
+        all_db_plans = [_fmt_plan(p) for p in raw_db_plans if (p.get("price_inr") or p.get("price_usd"))]
 
-        for plan in app_plans + db_plans:
+        for plan in all_app_plans + all_db_plans:
             if not plan.get("plan_type"):
                 plan["plan_type"] = default_plan_type
 
-        # Group plans by service_type and deployment_mode with computed totals.
-        # Separate mode: user picks an app_plan + db_plan (two servers).
-        # Unified mode: user picks one plan covering both app + db.
-        plans_by_service_type = {}
-        for st in service_types:
-            st_name = st["name"]
-            st_app = [p for p in app_plans if p.get("plan_type") == st_name]
-            st_db = [p for p in db_plans if p.get("plan_type") == st_name]
+        # Split into Standard vs Premium plan lists
+        standard_type = default_plan_type  # typically "Standard Instance"
+        premium_types = {st["name"] for st in service_types if st["name"] != standard_type}
 
-            # Cheapest DB plan for this service type (for separate mode totals)
-            min_db_inr = min(
-                (p.get("price_inr", 0) for p in st_db), default=0
-            )
-            min_db_usd = min(
-                (p.get("price_usd", 0) for p in st_db), default=0
-            )
+        # Standard: separate app and db plan lists
+        app_plans = sorted(
+            [p for p in all_app_plans if p.get("plan_type") == standard_type],
+            key=lambda p: p.get("price_inr", 0),
+        )
+        db_plans = sorted(
+            [p for p in all_db_plans if p.get("plan_type") == standard_type],
+            key=lambda p: p.get("price_inr", 0),
+        )
 
-            # Separate mode: each app plan gets an estimated total
-            # (app plan price + cheapest matching DB plan price).
-            # Both monthly and per-day totals are provided.
-            separate_app = []
-            for p in st_app:
-                total_inr = p["price_inr"] + min_db_inr
-                total_usd = p["price_usd"] + min_db_usd
-                separate_app.append({
-                    **p,
-                    "estimated_total_inr": total_inr,
-                    "estimated_total_usd": total_usd,
-                    "estimated_total_per_day_inr": round(total_inr / days_in_month, 2) if total_inr else 0,
-                    "estimated_total_per_day_usd": round(total_usd / days_in_month, 2) if total_usd else 0,
-                })
-            separate_db = list(st_db)
-
-            # Unified mode: only plans where allow_unified_server is truthy.
-            # Total is just the single plan price (one server).
-            unified = [
-                {
-                    **p,
-                    "total_inr": p["price_inr"],
-                    "total_usd": p["price_usd"],
-                    "total_per_day_inr": p["price_per_day_inr"],
-                    "total_per_day_usd": p["price_per_day_usd"],
-                }
-                for p in st_app
-                if p.get("allow_unified_server") in (1, True, "1")
-            ]
-
-            plans_by_service_type[st_name] = {
-                "service_type": st,
-                "separate": {
-                    "app_plans": separate_app,
-                    "db_plans": separate_db,
-                    "min_db_plan_inr": min_db_inr,
-                    "min_db_plan_usd": min_db_usd,
-                },
-                "unified": {
-                    "app_plans": unified,
-                },
-            }
+        # Premium: combined app + db plans (all non-standard service types)
+        premium_app_plans = sorted(
+            [p for p in all_app_plans if p.get("plan_type") in premium_types],
+            key=lambda p: p.get("price_inr", 0),
+        )
+        premium_db_plans = sorted(
+            [p for p in all_db_plans if p.get("plan_type") in premium_types],
+            key=lambda p: p.get("price_inr", 0),
+        )
 
         return _ok({
             "regions": regions,
@@ -3786,9 +3750,10 @@ def get_server_options():
             "deployment_modes": deployment_modes,
             "service_types": service_types,
             "default_service_type": default_plan_type,
-            "plans_by_service_type": plans_by_service_type,
             "app_plans": app_plans,
             "db_plans": db_plans,
+            "premium_app_plans": premium_app_plans,
+            "premium_db_plans": premium_db_plans,
             "storage_plan": data.get("storage_plan"),
             "snapshot_plan": data.get("snapshot_plan"),
         })
