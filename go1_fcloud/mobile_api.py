@@ -3678,70 +3678,59 @@ def get_server_options():
             key=lambda s: s.get("order_in_list", 0),
         )
 
-        # Back-fill plan_type and normalize every plan with resource and
-        # pricing display fields.  price_inr / price_usd from the Press API
-        # are *monthly* prices.  The Frappe Cloud dashboard also computes a
-        # daily rate (monthly / days-in-current-month) which we replicate
-        # here as price_per_day_*.  Raw fields are preserved via **p so that
-        # cluster, platform, instance_type etc. are available for filtering.
+        # Plans come from press.api.server.plans("Server") and
+        # press.api.server.plans("Database Server") — already ordered
+        # by price_usd asc.  Each plan has: name, title, description,
+        # price_usd, price_inr, vcpu, memory, disk, cluster,
+        # instance_type, premium, platform, plan_type,
+        # allow_unified_server, machine_unavailable.
         raw_app_plans = data.get("app_plans", [])
         raw_db_plans = data.get("db_plans", [])
         days_in_month = frappe.utils.get_last_day(None).day
 
         def _fmt_plan(p):
-            """Return a plan dict with normalized resources and display fields."""
-            vcpu = p.get("vcpu", 0)
-            raw_mem = p.get("memory", 0)
-            memory = _normalize_memory(raw_mem) if raw_mem else 0
-            disk = p.get("disk", 0)
+            """Return a clean plan dict with display helpers."""
             price_inr = p.get("price_inr", 0) or 0
             price_usd = p.get("price_usd", 0) or 0
-            platform = p.get("platform", "")
+            vcpu = p.get("vcpu", 0) or 0
+            memory = p.get("memory", 0) or 0
+            disk = p.get("disk", 0) or 0
+            platform = p.get("platform", "") or ""
+            plan_type = p.get("plan_type", "") or default_plan_type
             return {
-                **p,
-                "vcpu": vcpu,
-                "memory": memory,
-                "disk": disk,
+                "name": p.get("name", ""),
+                "title": p.get("title", ""),
+                "description": p.get("description", ""),
                 "price_inr": price_inr,
                 "price_usd": price_usd,
                 "price_per_day_inr": round(price_inr / days_in_month, 2) if price_inr else 0,
                 "price_per_day_usd": round(price_usd / days_in_month, 2) if price_usd else 0,
+                "vcpu": vcpu,
+                "memory": memory,
+                "disk": disk,
                 "vcpu_display": f"{vcpu} vCPU" if vcpu else "",
-                "memory_display": f"{memory} GB RAM" if memory else "",
-                "disk_display": f"{disk} GB Disk" if disk else "",
+                "memory_display": f"{memory} GB" if memory else "",
+                "disk_display": f"{disk} GB" if disk else "",
+                "cluster": p.get("cluster", ""),
+                "instance_type": p.get("instance_type", ""),
+                "platform": platform,
                 "platform_display": "ARM" if platform == "arm64" else "x86" if platform else "",
+                "plan_type": plan_type,
+                "premium": p.get("premium", 0),
+                "allow_unified_server": p.get("allow_unified_server", False),
+                "machine_unavailable": p.get("machine_unavailable", 0),
             }
 
+        # Format and skip ₹0 plans
         all_app_plans = [_fmt_plan(p) for p in raw_app_plans if (p.get("price_inr") or p.get("price_usd"))]
         all_db_plans = [_fmt_plan(p) for p in raw_db_plans if (p.get("price_inr") or p.get("price_usd"))]
 
-        for plan in all_app_plans + all_db_plans:
-            if not plan.get("plan_type"):
-                plan["plan_type"] = default_plan_type
-
-        # Split into Standard vs Premium plan lists
-        standard_type = default_plan_type  # typically "Standard Instance"
-        premium_types = {st["name"] for st in service_types if st["name"] != standard_type}
-
-        # Standard: separate app and db plan lists
-        app_plans = sorted(
-            [p for p in all_app_plans if p.get("plan_type") == standard_type],
-            key=lambda p: p.get("price_inr", 0),
-        )
-        db_plans = sorted(
-            [p for p in all_db_plans if p.get("plan_type") == standard_type],
-            key=lambda p: p.get("price_inr", 0),
-        )
-
-        # Premium: combined app + db plans (all non-standard service types)
-        premium_app_plans = sorted(
-            [p for p in all_app_plans if p.get("plan_type") in premium_types],
-            key=lambda p: p.get("price_inr", 0),
-        )
-        premium_db_plans = sorted(
-            [p for p in all_db_plans if p.get("plan_type") in premium_types],
-            key=lambda p: p.get("price_inr", 0),
-        )
+        # Split by plan_type: Standard (default_plan_type) vs Premium (others)
+        standard_type = default_plan_type
+        app_plans = [p for p in all_app_plans if p["plan_type"] == standard_type]
+        db_plans = [p for p in all_db_plans if p["plan_type"] == standard_type]
+        premium_app_plans = [p for p in all_app_plans if p["plan_type"] != standard_type]
+        premium_db_plans = [p for p in all_db_plans if p["plan_type"] != standard_type]
 
         return _ok({
             "regions": regions,
