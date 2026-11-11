@@ -1207,19 +1207,19 @@ def get_site_backup_download_link(name, backup, file_type="database"):
 @frappe.whitelist()
 def site_restore(name, backup=None, database_file=None, public_file=None, private_file=None, skip_failing_patches=False):
     """
-    Restore a site from an existing backup or Remote File references.
+    Restore a site from an existing backup.
 
     Args:
       name:           Go1 FCloud Site doc name or Frappe Cloud site name
       backup:         Site Backup document name (from get_site_backups "name" field)
-      database_file:  Remote File document name for database backup
-      public_file:    Remote File document name for public files (optional)
-      private_file:   Remote File document name for private files (optional)
+      database_file:  Remote File name OR backup database URL (resolved automatically)
+      public_file:    Remote File name OR backup public URL (optional)
+      private_file:   Remote File name OR backup private URL (optional)
       skip_failing_patches: Skip failing patches during restore (default False)
 
     Either 'backup' OR 'database_file' must be provided.
-    When 'backup' is provided, the Remote File names are resolved
-    automatically from the backup record.
+    The function resolves Remote File document names automatically —
+    callers can pass a backup name, a URL, or a Remote File name.
     """
     try:
         _require_role()
@@ -1228,42 +1228,38 @@ def site_restore(name, backup=None, database_file=None, public_file=None, privat
         if not backup and not database_file:
             return _err("Either backup name or database_file is required.")
 
+        # Fetch site backups once (needed for both backup-name and URL lookups)
+        all_backups = unwrap(
+            cloud_get("press.api.site.backups", {"name": cloud_name})
+        ) or []
+
         files = {}
 
         if backup:
-            # Look up the backup to get its Remote File names
-            all_backups = unwrap(
-                cloud_get("press.api.site.backups", {"name": cloud_name})
-            ) or []
-
-            backup_data = None
-            for b in all_backups:
-                if b.get("name") == backup:
-                    backup_data = b
-                    break
-
+            # Match by backup document name
+            backup_data = next((b for b in all_backups if b.get("name") == backup), None)
             if not backup_data:
                 return _err(f"Backup '{backup}' not found for this site.")
 
-            # Use Remote File document names (required by press.api.site.restore)
-            if backup_data.get("remote_database_file"):
-                files["database"] = backup_data["remote_database_file"]
-            if backup_data.get("remote_public_file"):
-                files["public"] = backup_data["remote_public_file"]
-            if backup_data.get("remote_private_file"):
-                files["private"] = backup_data["remote_private_file"]
-            if backup_data.get("remote_config_file"):
-                files["config"] = backup_data["remote_config_file"]
-
+            files = _extract_remote_files(backup_data)
             if not files.get("database"):
                 return _err("No remote database file found for this backup.")
         else:
-            # Restore from Remote File references directly
-            files["database"] = database_file
-            if public_file:
-                files["public"] = public_file
-            if private_file:
-                files["private"] = private_file
+            # database_file could be a Remote File name OR a backup URL.
+            # If it looks like a URL, resolve it to Remote File names via backup records.
+            if database_file and database_file.startswith("http"):
+                backup_data = _find_backup_by_url(all_backups, database_file)
+                if not backup_data:
+                    return _err("Could not find a backup matching the provided URL.")
+                files = _extract_remote_files(backup_data)
+                if not files.get("database"):
+                    return _err("No remote database file found for this backup.")
+            else:
+                files["database"] = database_file
+                if public_file:
+                    files["public"] = public_file
+                if private_file:
+                    files["private"] = private_file
 
         result = unwrap(
             cloud_post("press.api.site.restore", {
@@ -1278,6 +1274,32 @@ def site_restore(name, backup=None, database_file=None, public_file=None, privat
     except Exception:
         frappe.log_error("mobile_api.site_restore", frappe.get_traceback())
         return _err("Failed to restore site.")
+
+
+def _extract_remote_files(backup_data):
+    """Extract Remote File document names from a backup record."""
+    files = {}
+    if backup_data.get("remote_database_file"):
+        files["database"] = backup_data["remote_database_file"]
+    if backup_data.get("remote_public_file"):
+        files["public"] = backup_data["remote_public_file"]
+    if backup_data.get("remote_private_file"):
+        files["private"] = backup_data["remote_private_file"]
+    if backup_data.get("remote_config_file"):
+        files["config"] = backup_data["remote_config_file"]
+    return files
+
+
+def _find_backup_by_url(backups, url):
+    """Find a backup record by matching any of its URL fields."""
+    # Strip query params for comparison (URLs may have different session IDs)
+    clean = url.split("?")[0] if url else ""
+    for b in backups:
+        for field in ("database_url", "public_url", "private_url", "config_file_url"):
+            val = b.get(field, "")
+            if val and val.split("?")[0] == clean:
+                return b
+    return None
 
 
 @frappe.whitelist()
