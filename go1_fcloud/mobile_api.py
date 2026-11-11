@@ -3607,142 +3607,71 @@ def server_action(name, action, extra=None):
 @frappe.whitelist()
 def get_server_options():
     """
-    Return options for creating a new server:
-      regions (with image), providers (with image),
-      deployment_modes, service_types (plan_types with plans grouped),
-      app_plans, db_plans, etc.
+    Return options for creating a new server.
 
-    Endpoint: press.api.server.options
+    Proxies press.api.server.options and adds display helpers to plans.
+    Response mirrors the Press API structure:
+      regions, regions_data, app_plans, db_plans, plan_types,
+      default_plan_type, storage_plan, snapshot_plan.
     """
     try:
         _require_role()
         data = unwrap(cloud_post("press.api.server.options")) or {}
 
-        # Build providers list from regions_data
+        # Pass through regions, regions_data, plan_types, default_plan_type
+        # exactly as Press returns them.
+        regions = data.get("regions", [])
         regions_data = data.get("regions_data", {})
-        provider_map = {}
-        for region_title, region_info in regions_data.items():
-            for prov_name, prov_info in region_info.get("providers", {}).items():
-                if prov_name not in provider_map:
-                    provider_map[prov_name] = {
-                        "name": prov_name,
-                        "title": prov_info.get("title", prov_name),
-                        "image": prov_info.get("provider_image", ""),
-                    }
-
-        # Build regions list from the flat regions array
-        regions = []
-        for r in data.get("regions", []):
-            regions.append({
-                "name": r.get("name", ""),
-                "title": r.get("title", ""),
-                "image": r.get("image", ""),
-                "cloud_provider": r.get("cloud_provider", ""),
-                "beta": r.get("beta", False),
-                "has_unified_server_support": r.get("has_unified_server_support", False),
-                "by_default_select_unified_mode": r.get("by_default_select_unified_mode", False),
-            })
-
-        # Deployment modes: Separate vs Unified
-        deployment_modes = [
-            {
-                "name": "separate",
-                "title": "Separate Server for App and DB",
-                "description": "Dedicated servers for application and database.",
-            },
-            {
-                "name": "unified",
-                "title": "Unified Server for App and DB",
-                "description": "Single server for both application and database.",
-            },
-        ]
-
-        # Service types from plan_types (e.g. Dedicated Instance, Shared Instance)
-        raw_plan_types = data.get("plan_types", {})
+        plan_types = data.get("plan_types", {})
         default_plan_type = data.get("default_plan_type", "")
 
-        service_types = sorted(
-            [
-                {
-                    "name": pt.get("name", ""),
-                    "title": pt.get("title", ""),
-                    "description": pt.get("description", ""),
-                    "order_in_list": pt.get("order_in_list", 0),
-                }
-                for pt in (
-                    raw_plan_types.values()
-                    if isinstance(raw_plan_types, dict)
-                    else raw_plan_types
-                )
-            ],
-            key=lambda s: s.get("order_in_list", 0),
-        )
-
-        # Plans come from press.api.server.plans("Server") and
-        # press.api.server.plans("Database Server") — already ordered
-        # by price_usd asc.  Each plan has: name, title, description,
+        # Add display helpers to each plan; skip ₹0 plans.
+        # Press already returns plans ordered by price_usd asc via
+        # Plan.get_plans(). Each plan has: name, title, description,
         # price_usd, price_inr, vcpu, memory, disk, cluster,
         # instance_type, premium, platform, plan_type,
         # allow_unified_server, machine_unavailable.
-        raw_app_plans = data.get("app_plans", [])
-        raw_db_plans = data.get("db_plans", [])
         days_in_month = frappe.utils.get_last_day(None).day
 
-        def _fmt_plan(p):
-            """Return a clean plan dict with display helpers."""
+        def _enrich_plan(p):
+            """Add display fields to a plan dict from Press."""
             price_inr = p.get("price_inr", 0) or 0
             price_usd = p.get("price_usd", 0) or 0
             vcpu = p.get("vcpu", 0) or 0
             memory = p.get("memory", 0) or 0
             disk = p.get("disk", 0) or 0
             platform = p.get("platform", "") or ""
-            plan_type = p.get("plan_type", "") or default_plan_type
-            return {
-                "name": p.get("name", ""),
-                "title": p.get("title", ""),
-                "description": p.get("description", ""),
-                "price_inr": price_inr,
-                "price_usd": price_usd,
-                "price_per_day_inr": round(price_inr / days_in_month, 2) if price_inr else 0,
-                "price_per_day_usd": round(price_usd / days_in_month, 2) if price_usd else 0,
-                "vcpu": vcpu,
-                "memory": memory,
-                "disk": disk,
-                "vcpu_display": f"{vcpu} vCPU" if vcpu else "",
-                "memory_display": f"{memory} GB" if memory else "",
-                "disk_display": f"{disk} GB" if disk else "",
-                "cluster": p.get("cluster", ""),
-                "instance_type": p.get("instance_type", ""),
-                "platform": platform,
-                "platform_display": "ARM" if platform == "arm64" else "x86" if platform else "",
-                "plan_type": plan_type,
-                "premium": p.get("premium", 0),
-                "allow_unified_server": p.get("allow_unified_server", False),
-                "machine_unavailable": p.get("machine_unavailable", 0),
-            }
+            if not p.get("plan_type"):
+                p["plan_type"] = default_plan_type
+            p["price_inr"] = price_inr
+            p["price_usd"] = price_usd
+            p["price_per_day_inr"] = round(price_inr / days_in_month, 2) if price_inr else 0
+            p["price_per_day_usd"] = round(price_usd / days_in_month, 2) if price_usd else 0
+            p["vcpu_display"] = f"{vcpu} vCPU" if vcpu else ""
+            p["memory_display"] = f"{memory} GB" if memory else ""
+            p["disk_display"] = f"{disk} GB" if disk else ""
+            p["platform_display"] = "ARM" if platform == "arm64" else "x86" if platform else ""
+            return p
 
-        # Format and skip ₹0 plans
-        all_app_plans = [_fmt_plan(p) for p in raw_app_plans if (p.get("price_inr") or p.get("price_usd"))]
-        all_db_plans = [_fmt_plan(p) for p in raw_db_plans if (p.get("price_inr") or p.get("price_usd"))]
+        raw_app_plans = data.get("app_plans", [])
+        raw_db_plans = data.get("db_plans", [])
 
-        # Split by plan_type: Standard (default_plan_type) vs Premium (others)
-        standard_type = default_plan_type
-        app_plans = [p for p in all_app_plans if p["plan_type"] == standard_type]
-        db_plans = [p for p in all_db_plans if p["plan_type"] == standard_type]
-        premium_app_plans = [p for p in all_app_plans if p["plan_type"] != standard_type]
-        premium_db_plans = [p for p in all_db_plans if p["plan_type"] != standard_type]
+        app_plans = [
+            _enrich_plan(p) for p in raw_app_plans
+            if (p.get("price_inr") or p.get("price_usd"))
+        ]
+        db_plans = [
+            _enrich_plan(p) for p in raw_db_plans
+            if (p.get("price_inr") or p.get("price_usd"))
+        ]
 
         return _ok({
             "regions": regions,
             "regions_data": regions_data,
-            "providers": sorted(provider_map.values(), key=lambda p: p["name"]),
-            "deployment_modes": deployment_modes,
-            "service_types": service_types,
-            "default_service_type": default_plan_type,
+            "plan_types": plan_types,
+            "default_plan_type": default_plan_type,
             "app_plans": app_plans,
             "db_plans": db_plans,
-            "premium_app_plans": premium_app_plans,
-            "premium_db_plans": premium_db_plans,
             "storage_plan": data.get("storage_plan"),
             "snapshot_plan": data.get("snapshot_plan"),
         })
