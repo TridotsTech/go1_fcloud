@@ -49,6 +49,116 @@ def _err(msg):
     return {"success": False, "error": msg}
 
 
+# --------------------------------------------------------------------------- #
+#  Authentication
+# --------------------------------------------------------------------------- #
+
+
+def _get_auth_token(user):
+    """Return existing API key/secret for the user, or None."""
+    api_key = frappe.db.get_value("User", user, "api_key")
+    if not api_key:
+        return None
+    api_secret = frappe.utils.password.get_decrypted_password(
+        "User", user, "api_secret"
+    )
+    if not api_secret:
+        return None
+    return {"api_key": api_key, "api_secret": api_secret}
+
+
+def _generate_token(user):
+    """Generate a new API key + secret for the user and return them."""
+    user_doc = frappe.get_doc("User", user)
+    api_key = frappe.generate_hash(length=15)
+    api_secret = frappe.generate_hash(length=15)
+    user_doc.api_key = api_key
+    user_doc.api_secret = api_secret
+    user_doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    return {"api_key": api_key, "api_secret": api_secret}
+
+
+@frappe.whitelist(allow_guest=True)
+def login(usr=None, pwd=None):
+    """Authenticate user and return API token + profile info.
+
+    Validates that the user has at least one of the MOBILE_ROLES
+    (System Manager, FCloud, FCloud Admin).
+    """
+    try:
+        if not usr or not pwd:
+            return {"message": "Username and password are required.", "status": "Failed"}
+
+        frappe.local.login_manager.authenticate(usr, pwd)
+        frappe.local.login_manager.post_login()
+
+        login_response = {"message": frappe.local.response.get("message", "")}
+
+        # API token
+        token = _get_auth_token(usr)
+        if not token:
+            token = _generate_token(user=usr)
+        login_response["api_key"] = token["api_key"]
+        login_response["api_secret"] = token["api_secret"]
+        login_response["status"] = "Success"
+
+        # User info
+        users = frappe.db.get_all(
+            "User",
+            fields=["name", "full_name", "user_image"],
+            filters={"name": usr},
+        )
+
+        if users and users[0].name:
+            user_name = users[0].name
+
+            # Validate MOBILE_ROLES
+            roles = frappe.get_roles(user_name)
+            if not any(r in roles for r in MOBILE_ROLES):
+                return {
+                    "message": "Access denied. User does not have FCloud access.",
+                    "status": "Failed",
+                }
+
+            has_roles = frappe.db.get_all(
+                "Has Role", fields=["role"], filters={"parent": user_name}
+            )
+            employee = frappe.db.get_all(
+                "Employee",
+                fields=["name", "employee_name", "designation"],
+                filters={"user_id": user_name},
+            )
+            customer = frappe.db.get_all(
+                "Customer",
+                fields=["name", "customer_name"],
+                filters={"custom_customer": user_name},
+            )
+
+            login_response["roles"] = has_roles
+            login_response["photo"] = users[0].user_image or ""
+            login_response["full_name"] = users[0].full_name
+            login_response["user_id"] = user_name
+
+            if employee and employee[0]:
+                login_response["employee_id"] = employee[0].name
+                login_response["employee_name"] = employee[0].employee_name
+                login_response["designation"] = employee[0].designation or ""
+                login_response["full_name"] = employee[0].employee_name
+
+            if customer and customer[0]:
+                login_response["customer_id"] = customer[0].name
+                login_response["customer_name"] = customer[0].customer_name
+                frappe.local.response["full_name"] = customer[0].name
+
+        return login_response
+    except frappe.AuthenticationError:
+        return {"message": "Invalid username or password.", "status": "Failed"}
+    except Exception:
+        frappe.log_error("mobile_api.login", frappe.get_traceback())
+        return {"message": "Login Failed", "status": "Failed"}
+
+
 def _resolve_site(name):
     """Resolve a site name (local doc name or cloud site name) to the Frappe Cloud site URL.
 
