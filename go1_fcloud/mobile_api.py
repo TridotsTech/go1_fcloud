@@ -246,74 +246,112 @@ def dashboard(activity_filter=None):
     """
     try:
         _require_role()
-        # Fetch live counts from Frappe Cloud
-        cloud_sites = unwrap(cloud_post("press.api.site.all")) or []
-        cloud_benches = (
-            unwrap(
-                cloud_post(
-                    "press.api.bench.all",
-                    {"bench_filter": {"status": "All", "tag": ""}},
-                )
+
+        # --- Permission flags per doctype ---
+        site_perms = {
+            "can_read": frappe.has_permission("Go1 FCloud Site", "read"),
+            "can_create": frappe.has_permission("Go1 FCloud Site", "create"),
+            "can_write": frappe.has_permission("Go1 FCloud Site", "write"),
+            "can_delete": frappe.has_permission("Go1 FCloud Site", "delete"),
+        }
+        bench_perms = {
+            "can_read": frappe.has_permission("Go1 FCloud Bench", "read"),
+            "can_create": frappe.has_permission("Go1 FCloud Bench", "create"),
+            "can_write": frappe.has_permission("Go1 FCloud Bench", "write"),
+            "can_delete": frappe.has_permission("Go1 FCloud Bench", "delete"),
+        }
+        server_perms = {
+            "can_read": frappe.has_permission("Go1 FCloud Server", "read"),
+            "can_create": frappe.has_permission("Go1 FCloud Server", "create"),
+            "can_write": frappe.has_permission("Go1 FCloud Server", "write"),
+            "can_delete": frappe.has_permission("Go1 FCloud Server", "delete"),
+        }
+
+        # --- Counts from local doctypes (only if user has read permission) ---
+        site_stats = {"total": 0, "active": 0, "inactive": 0, "suspended": 0, "updating": 0}
+        if site_perms["can_read"]:
+            all_sites = frappe.get_all(
+                "Go1 FCloud Site", fields=["status"], ignore_ifnull=True
             )
-            or []
-        )
-        cloud_servers = (cloud_get("press.api.server.all") or {}).get("message", []) or []
+            site_status_counts = {}
+            for s in all_sites:
+                st = s.get("status") or ""
+                site_status_counts[st] = site_status_counts.get(st, 0) + 1
+            site_stats = {
+                "total": len(all_sites),
+                "active": site_status_counts.get("Active", 0),
+                "inactive": site_status_counts.get("Inactive", 0),
+                "suspended": site_status_counts.get("Suspended", 0),
+                "updating": sum(
+                    site_status_counts.get(st, 0)
+                    for st in ("Installing", "Updating", "Migrating")
+                ),
+            }
 
-        site_stats = {
-            "total": len(cloud_sites),
-            "active": sum(1 for s in cloud_sites if s.get("status") == "Active"),
-            "inactive": sum(1 for s in cloud_sites if s.get("status") == "Inactive"),
-            "suspended": sum(1 for s in cloud_sites if s.get("status") == "Suspended"),
-            "updating": sum(
-                1
-                for s in cloud_sites
-                if s.get("status") in ("Installing", "Updating", "Migrating")
-            ),
-        }
-        bench_stats = {
-            "total": len(cloud_benches),
-            "active": sum(1 for b in cloud_benches if b.get("status") == "Active"),
-        }
-        server_stats = {
-            "total": len(cloud_servers),
-            "active": sum(1 for s in cloud_servers if s.get("status") == "Active"),
-        }
+        bench_stats = {"total": 0, "active": 0}
+        if bench_perms["can_read"]:
+            all_benches = frappe.get_all(
+                "Go1 FCloud Bench",
+                fields=["status"],
+                filters={"is_dropped": 0},
+                ignore_ifnull=True,
+            )
+            bench_stats = {
+                "total": len(all_benches),
+                "active": sum(1 for b in all_benches if b.get("status") == "Active"),
+            }
 
-        # --- Recent Activity ---
-        # Fetch recent Agent Jobs per site using press.api.site.jobs
+        server_stats = {"total": 0, "active": 0}
+        if server_perms["can_read"]:
+            all_servers = frappe.get_all(
+                "Go1 FCloud Server", fields=["status"], ignore_ifnull=True
+            )
+            server_stats = {
+                "total": len(all_servers),
+                "active": sum(1 for s in all_servers if s.get("status") == "Active"),
+            }
+
+        # --- Recent Activity (from cloud jobs, gated by site read permission) ---
         activities = []
-        site_names = [s.get("name") for s in cloud_sites if s.get("name")]
+        if site_perms["can_read"]:
+            site_records = frappe.get_all(
+                "Go1 FCloud Site",
+                fields=["name", "url"],
+                ignore_ifnull=True,
+            )
+            site_url_map = {s["name"]: s.get("url") or s["name"] for s in site_records}
+            site_names = [s["name"] for s in site_records]
 
-        for site_name in site_names[:10]:
-            try:
-                site_jobs = (
-                    unwrap(
-                        cloud_post(
-                            "press.api.site.jobs",
-                            {
-                                "filters": {"site": site_name},
-                                "order_by": "creation desc",
-                                "limit_page_length": 5,
-                            },
+            for site_name in site_names[:10]:
+                try:
+                    site_jobs = (
+                        unwrap(
+                            cloud_post(
+                                "press.api.site.jobs",
+                                {
+                                    "filters": {"site": site_name},
+                                    "order_by": "creation desc",
+                                    "limit_page_length": 5,
+                                },
+                            )
                         )
+                        or []
                     )
-                    or []
-                )
-                for j in site_jobs:
-                    activities.append(
-                        {
-                            "title": j.get("job_type") or "Activity",
-                            "status": _normalise_activity_status(
-                                (j.get("status") or "").strip()
-                            ),
-                            "type": "site",
-                            "site": site_name,
-                            "creation": j.get("creation") or "",
-                            "reason": "",
-                        }
-                    )
-            except Exception:
-                continue
+                    for j in site_jobs:
+                        activities.append(
+                            {
+                                "title": j.get("job_type") or "Activity",
+                                "status": _normalise_activity_status(
+                                    (j.get("status") or "").strip()
+                                ),
+                                "type": "site",
+                                "site": site_url_map.get(site_name, site_name),
+                                "creation": j.get("creation") or "",
+                                "reason": "",
+                            }
+                        )
+                except Exception:
+                    continue
 
         activities.sort(key=lambda x: x.get("creation", ""), reverse=True)
         activities = activities[:20]
@@ -326,6 +364,11 @@ def dashboard(activity_filter=None):
 
         return _ok(
             {
+                "permissions": {
+                    "site": site_perms,
+                    "bench": bench_perms,
+                    "server": server_perms,
+                },
                 "sites": site_stats,
                 "benches": bench_stats,
                 "servers": server_stats,
