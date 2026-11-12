@@ -3961,6 +3961,12 @@ def get_server_options():
             p["memory_display"] = f"{memory} GB" if memory else ""
             p["disk_display"] = f"{disk} GB" if disk else ""
             p["platform_display"] = "ARM" if platform == "arm64" else "x86" if platform else ""
+            # Pass through fields needed for filtering by region/provider
+            p["cluster"] = p.get("cluster", "")
+            p["premium"] = p.get("premium", 0)
+            p["instance_type"] = p.get("instance_type", "")
+            p["allow_unified_server"] = p.get("allow_unified_server", 0)
+            p["machine_unavailable"] = p.get("machine_unavailable", 0)
             return p
 
         raw_app_plans = data.get("app_plans", [])
@@ -3975,62 +3981,61 @@ def get_server_options():
             if (p.get("price_inr") or p.get("price_usd"))
         ]
 
-        # Extract unique providers from plans
+        # Extract unique providers from multiple sources
+
         providers = set()
-        for p in app_plans:
-            for cp in p.get("cloud_providers", []):
-                providers.add(cp)
-        for p in db_plans:
-            for cp in p.get("cloud_providers", []):
-                providers.add(cp)
 
-        # Fallback 1: extract providers from regions_data values
-        if not providers:
-            for rd in regions_data.values():
-                if isinstance(rd, dict):
-                    provider = rd.get("provider") or rd.get("cloud_provider") or ""
-                    if provider:
-                        providers.add(provider)
-                    # Also check nested providers list
-                    for cp in rd.get("providers", []) or rd.get("cloud_providers", []):
-                        if cp:
-                            providers.add(cp)
-
-        # Fallback 2: check if Press returned providers at the top level
-        if not providers:
-            for cp in data.get("providers", []) or data.get("cloud_providers", []):
+        # 1. From regions list (Press returns Cluster docs with cloud_provider)
+        for r in regions:
+            if isinstance(r, dict):
+                cp = r.get("cloud_provider") or ""
                 if cp:
                     providers.add(cp)
 
-        # Fallback 3: extract provider from each plan's cluster in regions_data
+        # 2. From regions_data (keyed by title, providers is a dict of provider names)
+        if not providers:
+            for rd in regions_data.values():
+                if isinstance(rd, dict):
+                    # providers is a dict: {"AWS EC2": {...}, "OCI": {...}}
+                    rd_providers = rd.get("providers") or {}
+                    if isinstance(rd_providers, dict):
+                        for cp in rd_providers.keys():
+                            if cp:
+                                providers.add(cp)
+                    elif isinstance(rd_providers, list):
+                        for cp in rd_providers:
+                            if cp:
+                                providers.add(cp)
+
+        # 3. From plans' cloud_providers lists
         if not providers:
             for p in app_plans + db_plans:
-                cluster = p.get("cluster", "")
-                if cluster and cluster in regions_data:
-                    rd = regions_data[cluster]
-                    if isinstance(rd, dict):
-                        provider = rd.get("provider") or rd.get("cloud_provider") or ""
-                        if provider:
-                            providers.add(provider)
+                for cp in p.get("cloud_providers", []):
+                    providers.add(cp)
 
-        # Fallback 4: query Cluster doctype for cloud providers
+        # 4. Query Cluster doctype directly as last resort
         if not providers and regions:
             try:
-                clusters = unwrap(
-                    cloud_post(
-                        "press.api.client.get_list",
-                        {
-                            "doctype": "Cluster",
-                            "filters": {"name": ["in", regions]},
-                            "fields": ["name", "cloud_provider"],
-                            "limit_page_length": 50,
-                        },
-                    )
-                ) or []
-                for c in clusters:
-                    cp = c.get("cloud_provider") or ""
-                    if cp:
-                        providers.add(cp)
+                region_names = [
+                    r.get("name") if isinstance(r, dict) else r
+                    for r in regions if r
+                ]
+                if region_names:
+                    clusters = unwrap(
+                        cloud_post(
+                            "press.api.client.get_list",
+                            {
+                                "doctype": "Cluster",
+                                "filters": {"name": ["in", region_names]},
+                                "fields": ["name", "cloud_provider"],
+                                "limit_page_length": 50,
+                            },
+                        )
+                    ) or []
+                    for c in clusters:
+                        cp = c.get("cloud_provider") or ""
+                        if cp:
+                            providers.add(cp)
             except Exception:
                 frappe.clear_messages()
 
