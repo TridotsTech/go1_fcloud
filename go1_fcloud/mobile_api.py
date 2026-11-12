@@ -1801,8 +1801,98 @@ def setup_site_redirect(token=None):
             )
             return
 
-        # Token already validated (created by an authenticated user).
-        # Switch to Administrator so cloud_post can read the
+        # Generate Token-B so the browser can fetch a fresh SID
+        # at the last possible moment (minimises SID staleness).
+        token_b = frappe.generate_hash(length=32)
+        frappe.cache().set_value(
+            f"sid_fetch_token:{token_b}",
+            {"site": site_name},
+            expires_in_sec=120,  # 2 minutes
+        )
+
+        fetch_url = (
+            f"{frappe.utils.get_url()}/api/method/"
+            f"go1_fcloud.mobile_api._setup_site_fetch_sid?token={token_b}"
+        )
+
+        html = f"""
+        <div id="status" style="text-align:center;margin-top:60px;font-family:sans-serif;">
+            <h2>Preparing Setup Wizard&hellip;</h2>
+            <p>Please wait while we connect you to your site.</p>
+        </div>
+        <script>
+        (function() {{
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "{fetch_url}");
+            xhr.setRequestHeader("Accept", "application/json");
+            xhr.onload = function() {{
+                try {{
+                    var resp = JSON.parse(xhr.responseText);
+                    var data = resp.message || resp;
+                    if (data.redirect_url) {{
+                        window.location.href = data.redirect_url;
+                        return;
+                    }}
+                }} catch(e) {{}}
+                document.getElementById("status").innerHTML =
+                    "<h2>Something Went Wrong</h2>" +
+                    "<p>Could not connect to the site. " +
+                    "Please request a new setup link from the app.</p>";
+            }};
+            xhr.onerror = function() {{
+                document.getElementById("status").innerHTML =
+                    "<h2>Network Error</h2>" +
+                    "<p>Could not reach the server. " +
+                    "Please check your connection and request a new setup link.</p>";
+            }};
+            xhr.send();
+        }})();
+        </script>
+        """
+
+        frappe.respond_as_web_page(
+            "Setup Wizard",
+            html,
+            http_status_code=200,
+            indicator_color="green",
+        )
+    except Exception:
+        frappe.log_error("mobile_api.setup_site_redirect", frappe.get_traceback())
+        frappe.respond_as_web_page(
+            "Something Went Wrong",
+            "An unexpected error occurred. Please request a new setup link from the app.",
+            http_status_code=500,
+            indicator_color="red",
+        )
+
+
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def _setup_site_fetch_sid(token=None):
+    """
+    Called by the JavaScript on the intermediate setup page.
+
+    Validates and consumes Token-B, fetches a fresh SID from the
+    Press API, and returns a JSON redirect URL.  The browser performs
+    the redirect immediately, minimising the SID age.
+    """
+    try:
+        if not token:
+            return {"error": "No token provided."}
+
+        cache_key = f"sid_fetch_token:{token}"
+        data = frappe.cache().get_value(cache_key)
+
+        if not data:
+            return {"error": "Token expired or already used."}
+
+        # Single-use: consume immediately
+        frappe.cache().delete_value(cache_key)
+
+        site_name = data.get("site")
+        if not site_name:
+            return {"error": "Invalid token data."}
+
+        # Elevate to Administrator so cloud_post can read
         # Go1 FCloud Configuration credentials (Guest cannot).
         original_user = frappe.session.user
         try:
@@ -1816,38 +1906,27 @@ def setup_site_redirect(token=None):
             site_host = result.get("site", site_name)
         elif isinstance(result, str) and result:
             if result.startswith("http"):
-                location = (
+                # Press returned a full URL — append redirect-to
+                redirect_url = (
                     f"{result}&redirect-to=/setup-wizard"
                     if "?" in result
                     else f"{result}?redirect-to=/setup-wizard"
                 )
-                frappe.local.response["type"] = "redirect"
-                frappe.local.response["location"] = location
-                return
+                return {"redirect_url": redirect_url}
             sid = result
             site_host = site_name
         else:
-            frappe.respond_as_web_page(
-                "Login Failed",
-                "Could not create a login session for the site. Please try again.",
-                http_status_code=502,
-                indicator_color="red",
-            )
-            return
+            return {"error": "Could not create a login session for the site."}
 
-        frappe.local.response["type"] = "redirect"
-        frappe.local.response["location"] = (
-            f"https://{site_host}/api/method/login?sid={sid}"
-            f"&redirect-to=/setup-wizard"
-        )
+        return {
+            "redirect_url": (
+                f"https://{site_host}/api/method/login?sid={sid}"
+                f"&redirect-to=/setup-wizard"
+            )
+        }
     except Exception:
-        frappe.log_error("mobile_api.setup_site_redirect", frappe.get_traceback())
-        frappe.respond_as_web_page(
-            "Something Went Wrong",
-            "An unexpected error occurred. Please request a new setup link from the app.",
-            http_status_code=500,
-            indicator_color="red",
-        )
+        frappe.log_error("mobile_api._setup_site_fetch_sid", frappe.get_traceback())
+        return {"error": "An unexpected error occurred. Please request a new setup link."}
 
 
 @frappe.whitelist()
