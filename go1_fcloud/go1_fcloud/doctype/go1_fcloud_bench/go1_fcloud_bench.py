@@ -822,11 +822,25 @@ def sync_bench():
         local_by_title = {b["bench"]: b["name"] for b in local_benches if b.get("bench")}
         local_by_id = {b["id"]: b["name"] for b in local_benches if b.get("id")}
 
+        # Build server lookup: cloud server_id → local Go1 FCloud Server doc name
+        server_id_to_doc = {
+            s["server_id"]: s["name"]
+            for s in frappe.get_all(
+                "Go1 FCloud Server",
+                fields=["name", "server_id"],
+            )
+            if s.get("server_id")
+        }
+
         for bench in cloud_benches:
             title = bench.get("title", "")
             bench_id = bench.get("name", "")
             if not bench_id:
                 continue
+
+            # Resolve bench → server link
+            cloud_server_id = bench.get("server", "")
+            local_server_doc = server_id_to_doc.get(cloud_server_id, "")
 
             # Match by cloud bench ID first, then by title
             local_name = local_by_id.get(bench_id) or local_by_title.get(title)
@@ -837,6 +851,10 @@ def sync_bench():
                     doc.version = bench.get("version", "")
                     if bench_id and not doc.id:
                         doc.id = bench_id
+                    if cloud_server_id:
+                        doc.server_id = cloud_server_id
+                    if local_server_doc:
+                        doc.server = local_server_doc
                     doc.app_data = json.dumps(get_apps(doc.id or bench_id))
                     doc.save(ignore_permissions=True)
                     frappe.db.commit()
@@ -855,6 +873,10 @@ def sync_bench():
                 doc.status = bench.get("status", "")
                 doc.version = bench.get("version", "")
                 doc.region = details.get("region", "")
+                if cloud_server_id:
+                    doc.server_id = cloud_server_id
+                if local_server_doc:
+                    doc.server = local_server_doc
                 doc.app_data = json.dumps(get_apps(doc.id))
 
                 for app in details.get("installed_apps", []):
