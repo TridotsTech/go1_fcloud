@@ -2030,12 +2030,13 @@ def get_job_detail(job_name):
         if not job_name:
             return _err("job_name is required.")
 
-        result = unwrap(
-            cloud_post("press.api.site.get_job_status", {"job_name": job_name})
+        # Fetch full Agent Job document via press.api.client.get
+        job = unwrap(
+            cloud_post(
+                "press.api.client.get",
+                {"doctype": "Agent Job", "name": job_name},
+            )
         ) or {}
-
-        # Normalise: Press may return the job dict directly or nested
-        job = result if isinstance(result, dict) else {}
 
         steps_raw = job.get("steps", [])
         steps = []
