@@ -3972,18 +3972,55 @@ def get_server_options():
             for cp in p.get("cloud_providers", []):
                 providers.add(cp)
 
-        # Fallback 1: extract providers from regions_data
+        # Fallback 1: extract providers from regions_data values
         if not providers:
             for rd in regions_data.values():
-                provider = rd.get("provider") or rd.get("cloud_provider") or ""
-                if provider:
-                    providers.add(provider)
+                if isinstance(rd, dict):
+                    provider = rd.get("provider") or rd.get("cloud_provider") or ""
+                    if provider:
+                        providers.add(provider)
+                    # Also check nested providers list
+                    for cp in rd.get("providers", []) or rd.get("cloud_providers", []):
+                        if cp:
+                            providers.add(cp)
 
         # Fallback 2: check if Press returned providers at the top level
         if not providers:
             for cp in data.get("providers", []) or data.get("cloud_providers", []):
                 if cp:
                     providers.add(cp)
+
+        # Fallback 3: extract provider from each plan's cluster in regions_data
+        if not providers:
+            for p in app_plans + db_plans:
+                cluster = p.get("cluster", "")
+                if cluster and cluster in regions_data:
+                    rd = regions_data[cluster]
+                    if isinstance(rd, dict):
+                        provider = rd.get("provider") or rd.get("cloud_provider") or ""
+                        if provider:
+                            providers.add(provider)
+
+        # Fallback 4: query Cluster doctype for cloud providers
+        if not providers and regions:
+            try:
+                clusters = unwrap(
+                    cloud_post(
+                        "press.api.client.get_list",
+                        {
+                            "doctype": "Cluster",
+                            "filters": {"name": ["in", regions]},
+                            "fields": ["name", "cloud_provider"],
+                            "limit_page_length": 50,
+                        },
+                    )
+                ) or []
+                for c in clusters:
+                    cp = c.get("cloud_provider") or ""
+                    if cp:
+                        providers.add(cp)
+            except Exception:
+                frappe.clear_messages()
 
         return _ok({
             "regions": regions,
