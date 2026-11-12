@@ -1845,12 +1845,14 @@ def site_login_redirect(token=None):
 @frappe.whitelist()
 def setup_site(site_name):
     """
-    Return a one-time redirect URL that opens the site's setup wizard.
+    Return a direct login URL that opens the site's setup wizard.
 
-    Instead of returning a SID directly (which can expire before the
-    mobile browser loads it), we generate a short-lived token and cache
-    the site name.  The returned URL points to ``setup_site_redirect``
-    which fetches a **fresh** SID at the moment the browser hits it.
+    Fetches a fresh SID from the Press API and builds a login URL
+    pointing to the target site's ``/setup-wizard``.  The mobile app
+    can open this URL directly in a WebView or external browser.
+
+    Also returns a fallback redirect URL (via ``setup_site_redirect``)
+    in case the direct URL's SID expires before the browser loads it.
 
     Args:
       site_name: Go1 FCloud Site doc name or Frappe Cloud site name
@@ -1859,20 +1861,30 @@ def setup_site(site_name):
         _require_role()
         cloud_name = _resolve_site(site_name)
 
+        # Fetch a fresh SID and build the direct setup wizard URL
+        result = unwrap(cloud_post("press.api.site.login", {"name": cloud_name}))
+        setup_url = _build_login_redirect_url(
+            result, cloud_name, redirect_to="/setup-wizard"
+        )
+
+        # Also generate a token-based fallback URL
         token = frappe.generate_hash(length=32)
         frappe.cache().set_value(
             f"setup_token:{token}",
             {"site": cloud_name},
             expires_in_sec=300,  # 5 minutes
         )
-
-        redirect_url = (
+        fallback_url = (
             f"{frappe.utils.get_url()}/api/method/"
             f"go1_fcloud.mobile_api.setup_site_redirect?token={token}"
         )
 
+        if not setup_url:
+            return _ok({"setup_wizard_url": fallback_url})
+
         return _ok({
-            "setup_wizard_url": redirect_url,
+            "setup_wizard_url": setup_url,
+            "fallback_url": fallback_url,
         })
     except frappe.ValidationError as e:
         return _err(str(e))
