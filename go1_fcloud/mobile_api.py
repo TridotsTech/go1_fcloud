@@ -2057,6 +2057,9 @@ def get_job_detail(job_name):
                 "start": step_start,
                 "end": step_end,
                 "duration": step_duration,
+                "output": s.get("output", ""),
+                "command": s.get("command", ""),
+                "traceback": s.get("traceback", ""),
             })
 
         job_start = job.get("start") or ""
