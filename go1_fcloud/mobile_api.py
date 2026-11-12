@@ -3840,12 +3840,18 @@ def get_server_options():
             for cp in p.get("cloud_providers", []):
                 providers.add(cp)
 
-        # Fallback: extract providers from regions_data if plans had none
+        # Fallback 1: extract providers from regions_data
         if not providers:
             for rd in regions_data.values():
                 provider = rd.get("provider") or rd.get("cloud_provider") or ""
                 if provider:
                     providers.add(provider)
+
+        # Fallback 2: check if Press returned providers at the top level
+        if not providers:
+            for cp in data.get("providers", []) or data.get("cloud_providers", []):
+                if cp:
+                    providers.add(cp)
 
         return _ok({
             "regions": regions,
