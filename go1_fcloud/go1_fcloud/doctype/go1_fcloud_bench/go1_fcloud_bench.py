@@ -838,9 +838,8 @@ def sync_bench():
             if not bench_id:
                 continue
 
-            # Resolve bench → server link
+            # Resolve bench → server link from list data
             cloud_server_id = bench.get("server", "")
-            local_server_doc = server_id_to_doc.get(cloud_server_id, "")
 
             # Match by cloud bench ID first, then by title
             local_name = local_by_id.get(bench_id) or local_by_title.get(title)
@@ -851,10 +850,20 @@ def sync_bench():
                     doc.version = bench.get("version", "")
                     if bench_id and not doc.id:
                         doc.id = bench_id
+                    # Fallback: fetch server from bench detail if list didn't include it
+                    if not cloud_server_id:
+                        try:
+                            bench_detail = unwrap(
+                                cloud_post("press.api.bench.get", {"name": bench_id})
+                            ) or {}
+                            cloud_server_id = bench_detail.get("server", "")
+                        except Exception:
+                            pass
                     if cloud_server_id:
                         doc.server_id = cloud_server_id
-                    if local_server_doc:
-                        doc.server = local_server_doc
+                        local_server_doc = server_id_to_doc.get(cloud_server_id, "")
+                        if local_server_doc:
+                            doc.server = local_server_doc
                     doc.app_data = json.dumps(get_apps(doc.id or bench_id))
                     doc.save(ignore_permissions=True)
                     frappe.db.commit()
@@ -873,10 +882,13 @@ def sync_bench():
                 doc.status = bench.get("status", "")
                 doc.version = bench.get("version", "")
                 doc.region = details.get("region", "")
-                if cloud_server_id:
-                    doc.server_id = cloud_server_id
-                if local_server_doc:
-                    doc.server = local_server_doc
+                # Use server from list data, or from bench.get detail
+                server_id = cloud_server_id or details.get("server", "")
+                if server_id:
+                    doc.server_id = server_id
+                    local_server_doc = server_id_to_doc.get(server_id, "")
+                    if local_server_doc:
+                        doc.server = local_server_doc
                 doc.app_data = json.dumps(get_apps(doc.id))
 
                 for app in details.get("installed_apps", []):
@@ -929,9 +941,11 @@ def sync_bench():
 def _get_cloud_bench_details(bench_id: str) -> dict:
     from go1_fcloud.utils import cloud_post, unwrap
 
+    bench_info = unwrap(cloud_post("press.api.bench.get", {"name": bench_id})) or {}
     regions = unwrap(cloud_post("press.api.bench.regions", {"name": bench_id})) or []
     apps = unwrap(cloud_post("press.api.bench.apps", {"name": bench_id})) or []
     return {
+        "server": bench_info.get("server", ""),
         "region": regions[0].get("name") if regions else "",
         "installed_apps": apps,
     }
