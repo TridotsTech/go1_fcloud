@@ -2013,6 +2013,80 @@ def poll_job(job_name):
 
 
 @frappe.whitelist()
+def get_job_detail(job_name):
+    """
+    Return full detail for a single job, including its steps.
+
+    Args:
+      job_name:  The Agent Job name / ID (e.g. "asinrt97k7")
+
+    Response:
+      name, job_type, status, creation, creator, start, end, duration,
+      steps: [{name, step_name, status, start, end, duration}, ...]
+    """
+    try:
+        _require_role()
+
+        if not job_name:
+            return _err("job_name is required.")
+
+        result = unwrap(
+            cloud_post("press.api.site.get_job_status", {"job_name": job_name})
+        ) or {}
+
+        # Normalise: Press may return the job dict directly or nested
+        job = result if isinstance(result, dict) else {}
+
+        steps_raw = job.get("steps", [])
+        steps = []
+        for s in steps_raw:
+            step_start = s.get("start") or ""
+            step_end = s.get("end") or ""
+            step_duration = s.get("duration") or ""
+            if not step_duration and step_start and step_end:
+                try:
+                    diff = frappe.utils.time_diff_in_seconds(step_end, step_start)
+                    step_duration = f"{int(diff)}s"
+                except Exception:
+                    step_duration = ""
+            steps.append({
+                "name": s.get("name", ""),
+                "step_name": s.get("step_name", ""),
+                "status": s.get("status", ""),
+                "start": step_start,
+                "end": step_end,
+                "duration": step_duration,
+            })
+
+        job_start = job.get("start") or ""
+        job_end = job.get("end") or ""
+        job_duration = job.get("duration") or ""
+        if not job_duration and job_start and job_end:
+            try:
+                diff = frappe.utils.time_diff_in_seconds(job_end, job_start)
+                job_duration = f"{int(diff)}s"
+            except Exception:
+                job_duration = ""
+
+        return _ok({
+            "name": job.get("name", job_name),
+            "job_type": job.get("job_type", ""),
+            "status": job.get("status", ""),
+            "creation": job.get("creation", ""),
+            "creator": job.get("owner", ""),
+            "start": job_start,
+            "end": job_end,
+            "duration": job_duration,
+            "steps": steps,
+        })
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_job_detail", frappe.get_traceback())
+        return _err("Failed to fetch job detail.")
+
+
+@frappe.whitelist()
 def site_add_custom_domain(site_name, domain):
     """
     Add a custom domain to a site on Frappe Cloud.
