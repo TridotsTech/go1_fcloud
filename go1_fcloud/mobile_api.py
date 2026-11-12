@@ -3052,17 +3052,22 @@ def get_bench_deploy_candidate(candidate_name=None, name=None):
             frappe.clear_messages()
 
         if pipeline:
-            # Extract build names from pipeline_builds child table (reliable)
+            # Extract build names from every known child-table / field shape
             build_names = []
+
+            # a) pipeline_builds child table (field "build" or "deploy_candidate_build")
             for pb in pipeline.get("pipeline_builds", []):
                 if isinstance(pb, dict):
-                    bname = pb.get("build")
+                    bname = (
+                        pb.get("build")
+                        or pb.get("deploy_candidate_build")
+                        or pb.get("name")
+                    )
                     if bname and bname not in build_names:
                         build_names.append(bname)
 
-            # Also scan steps if they are structured dicts with builds
-            steps = pipeline.get("steps") or []
-            for stage in steps:
+            # b) steps list — may contain nested builds
+            for stage in pipeline.get("steps", []):
                 if not isinstance(stage, dict):
                     continue
                 for b in stage.get("builds", []):
@@ -3070,6 +3075,55 @@ def get_bench_deploy_candidate(candidate_name=None, name=None):
                         bname = b.get("name") or b.get("build")
                         if bname and bname not in build_names:
                             build_names.append(bname)
+
+            # c) Direct link fields on the pipeline document
+            for field in ("intel_build", "arm_build", "build", "deploy_candidate"):
+                bname = pipeline.get(field)
+                if bname and bname not in build_names:
+                    build_names.append(bname)
+
+            # d) If still empty, query Deploy Candidate Builds linked to this pipeline
+            if not build_names:
+                try:
+                    linked_builds = unwrap(
+                        cloud_post(
+                            "press.api.client.get_list",
+                            {
+                                "doctype": "Deploy Candidate Build",
+                                "filters": {"release_pipeline": candidate_name},
+                                "fields": ["name"],
+                                "limit_page_length": 20,
+                            },
+                        )
+                    ) or []
+                    for lb in linked_builds:
+                        bname = lb.get("name")
+                        if bname and bname not in build_names:
+                            build_names.append(bname)
+                except Exception:
+                    frappe.clear_messages()
+
+            # e) If still empty, try via Deploy Candidate linked to the pipeline
+            if not build_names:
+                try:
+                    linked_dcs = unwrap(
+                        cloud_post(
+                            "press.api.client.get_list",
+                            {
+                                "doctype": "Deploy Candidate",
+                                "filters": {"release_pipeline": candidate_name},
+                                "fields": ["name", "intel_build", "arm_build"],
+                                "limit_page_length": 20,
+                            },
+                        )
+                    ) or []
+                    for dc in linked_dcs:
+                        for bf in ("intel_build", "arm_build"):
+                            bname = dc.get(bf)
+                            if bname and bname not in build_names:
+                                build_names.append(bname)
+                except Exception:
+                    frappe.clear_messages()
 
             # Fetch each build's detail
             for bname in build_names:
