@@ -1690,6 +1690,11 @@ def site_login(site_name, reason=None):
     """
     Login as Administrator on a site. Returns a one-time login URL.
 
+    Instead of returning a SID directly (which can expire before the
+    mobile browser loads it), we generate a short-lived token and cache
+    the site name.  The returned URL points to ``site_login_redirect``
+    which fetches a **fresh** SID at the moment the browser hits it.
+
     Args:
       site_name:  Go1 FCloud Site doc name or Frappe Cloud site name
       reason:     Optional reason for the login
@@ -1697,24 +1702,201 @@ def site_login(site_name, reason=None):
     try:
         _require_role()
         cloud_name = _resolve_site(site_name)
-        params = {"name": cloud_name}
+
+        token = frappe.generate_hash(length=32)
+        cache_data = {"site": cloud_name}
         if reason:
-            params["reason"] = reason
-        result = unwrap(cloud_post("press.api.site.login", params))
-        if result and result.get("sid"):
-            site = result.get("site", cloud_name)
-            login_url = f"https://{site}/api/method/login?sid={result['sid']}"
-            return _ok({
-                "sid": result["sid"],
-                "site": site,
-                "login_url": login_url,
-            })
-        return _ok(result)
+            cache_data["reason"] = reason
+        frappe.cache().set_value(
+            f"login_token:{token}",
+            cache_data,
+            expires_in_sec=300,  # 5 minutes
+        )
+
+        login_url = (
+            f"{frappe.utils.get_url()}/api/method/"
+            f"go1_fcloud.mobile_api.site_login_redirect?token={token}"
+        )
+
+        return _ok({
+            "login_url": login_url,
+        })
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
         frappe.log_error("mobile_api.site_login", frappe.get_traceback())
         return _err("Failed to generate login URL.")
+
+
+@frappe.whitelist(allow_guest=True)
+def site_login_redirect(token=None):
+    """
+    Browser-facing redirect endpoint for site login.
+
+    Reads the cached site name for *token*, generates a second token
+    (Token-B), and renders an HTML page whose JS fetches a fresh SID
+    at the last moment via ``_site_login_fetch_sid``.
+    """
+    try:
+        if not token:
+            frappe.respond_as_web_page(
+                "Invalid Link",
+                "No token was provided. Please request a new login link from the app.",
+                http_status_code=400,
+                indicator_color="red",
+            )
+            return
+
+        cache_key = f"login_token:{token}"
+        data = frappe.cache().get_value(cache_key)
+
+        if not data:
+            frappe.respond_as_web_page(
+                "Link Expired",
+                "This login link has already been used or has expired. "
+                "Please request a new one from the app.",
+                http_status_code=410,
+                indicator_color="orange",
+            )
+            return
+
+        # Single-use: delete immediately
+        frappe.cache().delete_value(cache_key)
+
+        site_name = data.get("site")
+        if not site_name:
+            frappe.respond_as_web_page(
+                "Invalid Link",
+                "The login link is malformed. Please request a new one from the app.",
+                http_status_code=400,
+                indicator_color="red",
+            )
+            return
+
+        # Generate Token-B so the browser can fetch a fresh SID
+        # at the last possible moment (minimises SID staleness).
+        token_b = frappe.generate_hash(length=32)
+        token_b_data = {"site": site_name}
+        if data.get("reason"):
+            token_b_data["reason"] = data["reason"]
+        frappe.cache().set_value(
+            f"sid_login_token:{token_b}",
+            token_b_data,
+            expires_in_sec=120,  # 2 minutes
+        )
+
+        fetch_url = (
+            f"{frappe.utils.get_url()}/api/method/"
+            f"go1_fcloud.mobile_api._site_login_fetch_sid?token={token_b}"
+        )
+
+        html = f"""
+        <div id="status" style="text-align:center;margin-top:60px;font-family:sans-serif;">
+            <h2>Preparing Login&hellip;</h2>
+            <p>Please wait while we connect you to your site.</p>
+        </div>
+        <script>
+        (function() {{
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "{fetch_url}");
+            xhr.setRequestHeader("Accept", "application/json");
+            xhr.onload = function() {{
+                try {{
+                    var resp = JSON.parse(xhr.responseText);
+                    var data = resp.message || resp;
+                    if (data.redirect_url) {{
+                        window.location.href = data.redirect_url;
+                        return;
+                    }}
+                }} catch(e) {{}}
+                document.getElementById("status").innerHTML =
+                    "<h2>Something Went Wrong</h2>" +
+                    "<p>Could not connect to the site. " +
+                    "Please request a new login link from the app.</p>";
+            }};
+            xhr.onerror = function() {{
+                document.getElementById("status").innerHTML =
+                    "<h2>Network Error</h2>" +
+                    "<p>Could not reach the server. " +
+                    "Please check your connection and request a new login link.</p>";
+            }};
+            xhr.send();
+        }})();
+        </script>
+        """
+
+        frappe.respond_as_web_page(
+            "Site Login",
+            html,
+            http_status_code=200,
+            indicator_color="green",
+        )
+    except Exception:
+        frappe.log_error("mobile_api.site_login_redirect", frappe.get_traceback())
+        frappe.respond_as_web_page(
+            "Something Went Wrong",
+            "An unexpected error occurred. Please request a new login link from the app.",
+            http_status_code=500,
+            indicator_color="red",
+        )
+
+
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def _site_login_fetch_sid(token=None):
+    """
+    Called by the JavaScript on the intermediate login page.
+
+    Validates and consumes Token-B, fetches a fresh SID from the
+    Press API, and returns a JSON redirect URL.  The browser performs
+    the redirect immediately, minimising the SID age.
+    """
+    try:
+        if not token:
+            return {"error": "No token provided."}
+
+        cache_key = f"sid_login_token:{token}"
+        data = frappe.cache().get_value(cache_key)
+
+        if not data:
+            return {"error": "Token expired or already used."}
+
+        # Single-use: consume immediately
+        frappe.cache().delete_value(cache_key)
+
+        site_name = data.get("site")
+        if not site_name:
+            return {"error": "Invalid token data."}
+
+        # Elevate to Administrator so cloud_post can read
+        # Go1 FCloud Configuration credentials (Guest cannot).
+        original_user = frappe.session.user
+        try:
+            frappe.set_user("Administrator")
+            params = {"name": site_name}
+            if data.get("reason"):
+                params["reason"] = data["reason"]
+            result = unwrap(cloud_post("press.api.site.login", params))
+        finally:
+            frappe.set_user(original_user)
+
+        if isinstance(result, dict) and result.get("sid"):
+            sid = result["sid"]
+            site_host = result.get("site", site_name)
+        elif isinstance(result, str) and result:
+            if result.startswith("http"):
+                # Press returned a full URL — use it directly
+                return {"redirect_url": result}
+            sid = result
+            site_host = site_name
+        else:
+            return {"error": "Could not create a login session for the site."}
+
+        return {
+            "redirect_url": f"https://{site_host}/api/method/login?sid={sid}"
+        }
+    except Exception:
+        frappe.log_error("mobile_api._site_login_fetch_sid", frappe.get_traceback())
+        return {"error": "An unexpected error occurred. Please request a new login link."}
 
 
 @frappe.whitelist()
