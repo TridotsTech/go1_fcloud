@@ -904,12 +904,12 @@ def sync_bench():
         frappe.log_error("sync_bench:cleanup", frappe.get_traceback())
 
     # ----- Step 5: Map benches → servers -----
-    # Use press.api.bench.get (the Release Group doc endpoint) which returns
-    # the full doc including the "servers" child table.
-    # Direct HTTP requests are used instead of cloud_post/cloud_request
-    # because cloud_request calls frappe.throw on API errors, which adds to
-    # frappe.local.message_log and marks background jobs as failed even when
-    # the exception is caught in Python.
+    # Use press.api.client.get to fetch each Release Group doc — it returns
+    # the full document including the "servers" child table.
+    # NOTE: press.api.client.get (Press-specific) works; frappe.client.get_list
+    # (generic Frappe) is blocked by Frappe Cloud permissions.
+    # Direct HTTP requests are used instead of cloud_post to avoid
+    # frappe.throw poisoning the background job via message_log.
     try:
         from go1_fcloud.utils import get_headers, FCLOUD_BASE_URL
         import requests as _requests
@@ -936,50 +936,69 @@ def sync_bench():
             if not bench_id:
                 continue
 
+            cloud_server = ""
             try:
+                # Method 1: press.api.client.get for full Release Group doc
                 resp = _requests.post(
-                    f"{FCLOUD_BASE_URL}/api/method/press.api.bench.get",
+                    f"{FCLOUD_BASE_URL}/api/method/press.api.client.get",
                     headers=headers,
-                    json={"name": bench_id},
+                    json={"doctype": "Release Group", "name": bench_id},
                     timeout=15,
                 )
-                if resp.status_code != 200:
-                    continue
-                data = resp.json()
-                if "exc" in data or "exception" in data:
-                    continue
-                bench_doc = data.get("message") or {}
-
-                # Extract server from the "servers" child table
-                cloud_server = ""
-                for srv in bench_doc.get("servers") or []:
-                    cloud_server = srv.get("server") or ""
-                    if cloud_server:
-                        break
-
-                # Fallback: try top-level "server" field
-                if not cloud_server:
-                    cloud_server = bench_doc.get("server") or ""
-
-                if not cloud_server:
-                    continue
-
-                local_server = cloud_to_local_server.get(cloud_server)
-                if not local_server:
-                    continue
-
-                frappe.db.set_value(
-                    "Go1 FCloud Bench",
-                    lb["name"],
-                    {
-                        "server_id": cloud_server,
-                        "server": local_server,
-                    },
-                    update_modified=False,
-                )
-                updated += 1
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if "exc" not in data and "exception" not in data:
+                        rg_doc = data.get("message") or {}
+                        # servers child table
+                        for srv in rg_doc.get("servers") or []:
+                            cloud_server = srv.get("server") or ""
+                            if cloud_server:
+                                break
+                        # fallback: top-level server field
+                        if not cloud_server:
+                            cloud_server = rg_doc.get("server") or ""
             except Exception:
-                pass  # skip silently — server mapping is best-effort
+                pass
+
+            # Method 2: press.api.bench.get as fallback
+            if not cloud_server:
+                try:
+                    resp = _requests.post(
+                        f"{FCLOUD_BASE_URL}/api/method/press.api.bench.get",
+                        headers=headers,
+                        json={"name": bench_id},
+                        timeout=15,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if "exc" not in data and "exception" not in data:
+                            bench_doc = data.get("message") or {}
+                            for srv in bench_doc.get("servers") or []:
+                                cloud_server = srv.get("server") or ""
+                                if cloud_server:
+                                    break
+                            if not cloud_server:
+                                cloud_server = bench_doc.get("server") or ""
+                except Exception:
+                    pass
+
+            if not cloud_server:
+                continue
+
+            local_server = cloud_to_local_server.get(cloud_server)
+            if not local_server:
+                continue
+
+            frappe.db.set_value(
+                "Go1 FCloud Bench",
+                lb["name"],
+                {
+                    "server_id": cloud_server,
+                    "server": local_server,
+                },
+                update_modified=False,
+            )
+            updated += 1
 
         if updated:
             frappe.db.commit()
