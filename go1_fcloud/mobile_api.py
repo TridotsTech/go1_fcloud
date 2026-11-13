@@ -541,7 +541,31 @@ def get_sites(status_filter=None, search=None, server=None, start=0, limit=20):
             else:
                 filters["status"] = status_filter
         if server:
-            filters["bench"] = server
+            # Resolve server to doc name (supports doc name, server_name, server_id)
+            server_doc = None
+            if frappe.db.exists("Go1 FCloud Server", server):
+                server_doc = server
+            else:
+                server_doc = frappe.db.get_value(
+                    "Go1 FCloud Server", {"server_name": server}, "name"
+                ) or frappe.db.get_value(
+                    "Go1 FCloud Server", {"server_id": server}, "name"
+                )
+            if server_doc:
+                # Find all bench doc names on this server
+                bench_docs = frappe.get_all(
+                    "Go1 FCloud Bench",
+                    filters={"server": server_doc, "is_dropped": 0},
+                    pluck="name",
+                )
+                if bench_docs:
+                    filters["bench_name"] = ("in", bench_docs)
+                else:
+                    # No benches on this server — return empty
+                    filters["bench_name"] = "___NONE___"
+            else:
+                # Server not found — try as bench name directly (backward compat)
+                filters["bench"] = server
         if search:
             filters["url"] = ("like", f"%{search}%")
 
