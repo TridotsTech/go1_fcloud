@@ -1644,29 +1644,17 @@ def create_site(
         bench_app_names = {a.get("name", ""): a for a in bench_apps}
         frappe.log_error("create_site:bench_apps", json.dumps(bench_apps, default=str)[:3000])
 
-        # Only include apps that exist on the bench
-        # press.api.site.new expects {app, source} per app
+        # Only include apps that exist on the bench (plain name strings)
         app_list = []
-        seen_apps = set()
         for app_name in requested_apps:
             if app_name in bench_app_names:
-                ba = bench_app_names[app_name]
-                src = ba.get("source", "")
-                if isinstance(src, dict):
-                    src = src.get("name") or src.get("source", "")
-                app_list.append({"app": app_name, "source": str(src)})
-                seen_apps.add(app_name)
+                app_list.append(app_name)
             else:
                 # Try matching by title
                 matched = False
                 for ba in bench_apps:
                     if ba.get("title", "").lower() == app_name.lower():
-                        real_name = ba.get("name", "")
-                        src = ba.get("source", "")
-                        if isinstance(src, dict):
-                            src = src.get("name") or src.get("source", "")
-                        app_list.append({"app": real_name, "source": str(src)})
-                        seen_apps.add(real_name)
+                        app_list.append(ba.get("name", ""))
                         matched = True
                         break
                 if not matched:
@@ -1676,23 +1664,7 @@ def create_site(
                     )
 
         # frappe must be the first app in the list
-        if "frappe" not in seen_apps and "frappe" in bench_app_names:
-            ba = bench_app_names["frappe"]
-            src = ba.get("source", "")
-            if isinstance(src, dict):
-                src = src.get("name") or src.get("source", "")
-            app_list.insert(0, {"app": "frappe", "source": str(src)})
-        else:
-            # Move frappe to front
-            frappe_entry = None
-            rest = []
-            for entry in app_list:
-                if entry["app"] == "frappe":
-                    frappe_entry = entry
-                else:
-                    rest.append(entry)
-            if frappe_entry:
-                app_list = [frappe_entry] + rest
+        app_list = ["frappe"] + [a for a in app_list if a != "frappe"]
 
         # Resolve plan — match by name or title, default to cheapest
         site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
