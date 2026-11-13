@@ -632,6 +632,29 @@ def sync_site():
                         doc.plan = (
                             f"{plan.get('name','')} - INR {int(plan.get('price_inr', 0))}"
                         )
+
+                    # Map site → bench (Release Group)
+                    group_id = site.get("group", "")
+                    if group_id:
+                        doc.group = group_id
+                    title = site.get("title", "")
+                    version = site.get("version", "")
+                    if title and title != version:
+                        doc.bench = title
+
+                    if not doc.bench_name:
+                        bench_doc_name = None
+                        if group_id:
+                            bench_doc_name = frappe.db.get_value(
+                                "Go1 FCloud Bench", {"id": group_id}, "name"
+                            )
+                        if not bench_doc_name and title and title != version:
+                            bench_doc_name = frappe.db.get_value(
+                                "Go1 FCloud Bench", {"bench": title}, "name"
+                            )
+                        if bench_doc_name:
+                            doc.bench_name = bench_doc_name
+
                     doc.save(ignore_permissions=True)
                     frappe.db.commit()
                 except Exception:
@@ -658,15 +681,25 @@ def sync_site():
                         f"{plan.get('name','')} - INR {int(plan.get('price_inr', 0))}"
                     )
 
-                # Private bench site
+                # Map site → bench (Release Group)
                 title = site.get("title", "")
                 version = site.get("version", "")
-                if title and title != version:
+                group_id = site.get("group", "")
+
+                # Look up local bench doc: by Release Group ID first, then title
+                bench_doc_name = None
+                if group_id:
+                    bench_doc_name = frappe.db.get_value(
+                        "Go1 FCloud Bench", {"id": group_id}, "name"
+                    )
+                if not bench_doc_name and title and title != version:
                     bench_doc_name = frappe.db.get_value(
                         "Go1 FCloud Bench", {"bench": title}, "name"
                     )
-                    if bench_doc_name:
-                        doc.bench_name = bench_doc_name
+                if bench_doc_name:
+                    doc.bench_name = bench_doc_name
+
+                if title and title != version:
                     doc.bench = title
 
                     # Apps
@@ -755,6 +788,42 @@ def sync_site():
         frappe.db.commit()
     except Exception:
         frappe.log_error("sync_site:cleanup", frappe.get_traceback())
+
+    # ----- Step 5: Batch re-map sites missing bench links -----
+    # Catches sites created before their bench was synced.
+    try:
+        unlinked_sites = frappe.get_all(
+            "Go1 FCloud Site",
+            filters=[
+                ["bench_name", "in", ["", None]],
+                ["group", "not in", ["", None]],
+            ],
+            fields=["name", "group"],
+        )
+        bench_by_id = {
+            b["id"]: b["name"]
+            for b in frappe.get_all(
+                "Go1 FCloud Bench", fields=["name", "id"]
+            )
+            if b.get("id")
+        }
+
+        mapped = 0
+        for site in unlinked_sites:
+            bench_doc = bench_by_id.get(site.get("group"))
+            if bench_doc:
+                frappe.db.set_value(
+                    "Go1 FCloud Site",
+                    site["name"],
+                    "bench_name",
+                    bench_doc,
+                    update_modified=False,
+                )
+                mapped += 1
+        if mapped:
+            frappe.db.commit()
+    except Exception:
+        frappe.log_error("sync_site:bench_remap", frappe.get_traceback())
 
 
 # --------------------------------------------------------------------------- #

@@ -4749,27 +4749,34 @@ def sync_all():
     """
     Enqueue sync of sites, benches, and servers from Frappe Cloud.
     Returns immediately; sync runs in the background.
+    Syncs run sequentially: servers → benches → sites (dependency order).
     """
     try:
         _require_role()
-        from go1_fcloud.go1_fcloud.doctype.go1_fcloud_site.go1_fcloud_site import (
-            sync_site,
+        frappe.enqueue(
+            _sync_all_sequential, queue="long", job_name="fc_sync_all"
         )
-        from go1_fcloud.go1_fcloud.doctype.go1_fcloud_bench.go1_fcloud_bench import (
-            sync_bench,
-        )
-        from go1_fcloud.go1_fcloud.doctype.go1_fcloud_server.go1_fcloud_server import (
-            sync_server,
-        )
-
-        frappe.enqueue(sync_bench, queue="long", job_name="fc_sync_bench")
-        frappe.enqueue(sync_server, queue="long", job_name="fc_sync_server")
-        frappe.enqueue(sync_site, queue="long", job_name="fc_sync_site")
-
         return _ok({"message": "Sync started in background. Refresh after a minute."})
     except Exception:
         frappe.log_error("mobile_api.sync_all", frappe.get_traceback())
         return _err("Failed to start sync.")
+
+
+def _sync_all_sequential():
+    """Run all three syncs in dependency order: servers → benches → sites."""
+    from go1_fcloud.go1_fcloud.doctype.go1_fcloud_server.go1_fcloud_server import (
+        sync_server,
+    )
+    from go1_fcloud.go1_fcloud.doctype.go1_fcloud_bench.go1_fcloud_bench import (
+        sync_bench,
+    )
+    from go1_fcloud.go1_fcloud.doctype.go1_fcloud_site.go1_fcloud_site import (
+        sync_site,
+    )
+
+    sync_server()
+    sync_bench()
+    sync_site()
 
 
 @frappe.whitelist()

@@ -963,6 +963,33 @@ def sync_bench():
             "Go1 FCloud Bench",
             fields=["name", "id", "bench"],
         )
+
+        # Per-bench fallback: for benches not covered by the bulk get_list,
+        # fetch each Release Group doc individually to get its servers child table.
+        unmapped_bench_ids = [
+            lb.get("id") for lb in local_benches
+            if lb.get("id") and lb["id"] not in bench_to_cloud_server
+        ]
+        for bid in unmapped_bench_ids:
+            try:
+                rg_doc = unwrap(
+                    cloud_post(
+                        "frappe.client.get",
+                        {"doctype": "Release Group", "name": bid},
+                    )
+                )
+                if rg_doc and isinstance(rg_doc, dict):
+                    for srv in rg_doc.get("servers") or []:
+                        srv_name = srv.get("server") or ""
+                        if srv_name:
+                            bench_to_cloud_server[bid] = srv_name
+                            break
+            except Exception:
+                frappe.log_error(
+                    f"sync_bench:server_mapping:fallback:{bid}",
+                    frappe.get_traceback(),
+                )
+
         updated = 0
         for lb in local_benches:
             bench_id = lb.get("id")
