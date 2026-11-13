@@ -1544,24 +1544,25 @@ def check_domain(subdomain, domain="frappe.cloud"):
 
 @frappe.whitelist()
 def create_site(
-    site_name, group, cluster, plan, apps=None, domain="frappe.cloud",
-    share_details_consent=False, agree_region_laws=False, provider=None
+    site_name, group=None, cluster=None, plan=None, apps=None,
+    domain="frappe.cloud", share_details_consent=False,
+    agree_region_laws=False, provider=None, server=None,
 ):
     """
     Create a new Frappe Cloud site.
 
     Args:
       site_name:              subdomain (without domain suffix)
-      group:                  Release Group name
-      cluster:                cluster name
-      plan:                   plan name
+      group:                  Release Group name / bench ID / bench title
+      cluster:                cluster name (optional — auto-resolved from bench)
+      plan:                   plan name (optional — uses cheapest if omitted)
       apps:                   JSON list of app names e.g. '["erpnext"]'
       domain:                 Root domain (default "frappe.cloud", e.g. "m.frappe.cloud")
       share_details_consent:  Boolean checkbox for sharing details consent
       agree_region_laws:      Boolean checkbox for agreeing to region laws
-                              (e.g. "I agree that the laws of the region selected
-                              by me shall stand applicable to me and Frappe.")
       provider:               Cloud provider (e.g. "aws", "oci")
+      server:                 Go1 FCloud Server doc name, server_name, or server_id
+                              (resolves to the first active bench on that server)
     """
     try:
         _require_role()
@@ -1577,8 +1578,36 @@ def create_site(
         if isinstance(agree_region_laws, str):
             agree_region_laws = agree_region_laws.lower() in ("true", "1", "yes")
 
-        # Resolve local doc name to Frappe Cloud bench ID
-        _, bench_id = _resolve_bench(group)
+        # Resolve bench ID — from group param or via server lookup
+        bench_id = None
+        if group:
+            _, bench_id = _resolve_bench(group)
+        elif server:
+            # Resolve server to doc name
+            server_doc = None
+            if frappe.db.exists("Go1 FCloud Server", server):
+                server_doc = server
+            else:
+                server_doc = frappe.db.get_value(
+                    "Go1 FCloud Server", {"server_name": server}, "name"
+                ) or frappe.db.get_value(
+                    "Go1 FCloud Server", {"server_id": server}, "name"
+                )
+            if not server_doc:
+                return _err(f"Server '{server}' not found.")
+
+            # Find the first active bench on this server
+            bench_doc_name = frappe.db.get_value(
+                "Go1 FCloud Bench",
+                {"server": server_doc, "is_dropped": 0},
+                "name",
+                order_by="modified desc",
+            )
+            if not bench_doc_name:
+                return _err(f"No bench found on server '{server}'.")
+            _, bench_id = _resolve_bench(bench_doc_name)
+        else:
+            return _err("Either 'group' (bench) or 'server' is required.")
 
         # Verify bench is active
         bench = unwrap(cloud_post("press.api.bench.get", {"name": bench_id}))
@@ -1588,6 +1617,10 @@ def create_site(
             return _err(
                 f"Release Group is '{bench.get('status')}'. It must be Active to create a site."
             )
+
+        # Auto-resolve cluster from bench if not provided
+        if not cluster:
+            cluster = bench.get("cluster") or bench.get("region") or None
 
         # Fetch apps available on the bench to validate and get correct names
         bench_apps = unwrap(
@@ -1617,27 +1650,31 @@ def create_site(
         # frappe must be the first app in the list
         app_list = ["frappe"] + [a for a in app_list if a != "frappe"]
 
-        # Resolve plan name — match by name or title from available plans
-        site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
-        resolved_plan = plan
-        for p in site_plans:
-            if p.get("name") == plan:
-                resolved_plan = plan
-                break
-            if p.get("plan_title") == plan or str(p.get("name", "")) in plan:
-                resolved_plan = p.get("name")
-                break
+        # Resolve plan — match by name or title, default to cheapest
+        resolved_plan = None
+        if plan:
+            site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
+            resolved_plan = plan
+            for p in site_plans:
+                if p.get("name") == plan:
+                    resolved_plan = plan
+                    break
+                if p.get("plan_title") == plan or str(p.get("name", "")) in plan:
+                    resolved_plan = p.get("name")
+                    break
 
         site_payload = {
             "name": site_name,
             "domain": domain,
             "apps": app_list,
             "group": bench_id,
-            "cluster": cluster,
-            "plan": resolved_plan,
             "share_details_consent": share_details_consent,
             "agree_region_laws": agree_region_laws,
         }
+        if cluster:
+            site_payload["cluster"] = cluster
+        if resolved_plan:
+            site_payload["plan"] = resolved_plan
         if provider:
             site_payload["provider"] = provider
 
