@@ -171,3 +171,7 @@ def sync_server():
 
     except Exception:
         frappe.log_error("Sync Server Error", frappe.get_traceback())
+
+    # Clear message_log entries left by frappe.throw inside cloud_request.
+    if hasattr(frappe.local, "message_log"):
+        frappe.local.message_log = []

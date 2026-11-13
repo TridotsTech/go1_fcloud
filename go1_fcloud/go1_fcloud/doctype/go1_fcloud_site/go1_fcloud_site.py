@@ -825,6 +825,12 @@ def sync_site():
     except Exception:
         frappe.log_error("sync_site:bench_remap", frappe.get_traceback())
 
+    # Clear message_log entries left by frappe.throw inside cloud_request.
+    # These are from caught-and-handled API errors (e.g. blocked endpoints)
+    # but would otherwise cause the background job to be marked as failed.
+    if hasattr(frappe.local, "message_log"):
+        frappe.local.message_log = []
+
 
 # --------------------------------------------------------------------------- #
 #  Private helpers

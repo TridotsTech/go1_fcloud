@@ -979,6 +979,12 @@ def sync_bench():
     except Exception:
         frappe.log_error("sync_bench:server_mapping", frappe.get_traceback())
 
+    # Clear message_log entries left by frappe.throw inside cloud_request.
+    # These are from caught-and-handled API errors (e.g. blocked endpoints)
+    # but would otherwise cause the background job to be marked as failed.
+    if hasattr(frappe.local, "message_log"):
+        frappe.local.message_log = []
+
 
 def _get_cloud_bench_details(bench_id: str) -> dict:
     from go1_fcloud.utils import cloud_post, unwrap
@@ -1006,7 +1012,6 @@ def get_apps(title):
     Endpoint: press.api.bench.versions
     """
     try:
-        frappe.log_error("title name", title)
         return cloud_post("press.api.bench.all_apps", {"name": title})
     except Exception:
         frappe.log_error("get_apps", frappe.get_traceback())
