@@ -2452,6 +2452,16 @@ def get_bench(name):
         region = bench_data.get("cluster", "")
         cluster_image = bench_data.get("cluster_image", "") or bench_data.get("image", "")
 
+        # Server info from local doc
+        server_doc_name = doc.server if doc else ""
+        server_title = ""
+        server_id = doc.server_id if doc else ""
+        if server_doc_name:
+            server_title = (
+                frappe.db.get_value("Go1 FCloud Server", server_doc_name, "server_name")
+                or server_doc_name
+            )
+
         return _ok(
             {
                 "name": doc.name if doc else "",
@@ -2463,6 +2473,9 @@ def get_bench(name):
                 "region_image": cluster_image,
                 "creation": bench_data.get("creation", ""),
                 "project": doc.project if doc else "",
+                "server": server_doc_name,
+                "server_title": server_title,
+                "server_id": server_id,
                 "update_available": update_available,
                 "apps": apps,
                 "sites": bench_sites,
