@@ -1687,18 +1687,27 @@ def create_site(
             )
             resolved_plan = cheapest.get("name")
 
+        # Build payload based on creation mode:
+        # 1. Server-based: needs server + version (Press finds/creates bench)
+        # 2. Group-based: needs group (Press uses existing bench directly)
         site_payload = {
             "name": site_name,
             "domain": domain,
             "apps": app_list,
-            "group": bench_id,
-            "cluster": cluster if not cloud_server_name else None,
             "plan": resolved_plan or "",
             "share_details_consent": share_details_consent,
             "agree_region_laws": agree_region_laws,
         }
         if cloud_server_name:
+            # Server-based: Press ignores group and uses server+version
+            # to find/create a bench on the dedicated server
             site_payload["server"] = cloud_server_name
+            site_payload["version"] = bench.get("version", "")
+            site_payload["cluster"] = cluster or None
+        else:
+            # Group-based: Press uses the group directly via _new()
+            site_payload["group"] = bench_id
+            site_payload["cluster"] = cluster or ""
         if provider:
             site_payload["provider"] = provider
 
