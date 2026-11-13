@@ -1581,6 +1581,7 @@ def create_site(
         # Resolve bench ID — from group param or via server lookup
         bench_id = None
         cloud_server_name = None  # Frappe Cloud server ID (e.g. f962-mumbai.frappe.cloud)
+        group_provided = bool(group)  # Track if user explicitly provided a group
         if group:
             _, bench_id = _resolve_bench(group)
         elif server:
@@ -1615,9 +1616,9 @@ def create_site(
         else:
             return _err("Either 'group' (bench) or 'server' is required.")
 
-        # If server was passed via group (not server param), resolve cloud server
-        # from the local bench doc
-        if not cloud_server_name and group:
+        # If server-only mode (no group provided), resolve cloud server ID
+        # from the bench doc for the payload
+        if not cloud_server_name and not group_provided and server:
             bench_doc = frappe.db.get_value(
                 "Go1 FCloud Bench", {"id": bench_id}, ["server", "server_id"], as_dict=True
             ) or {}
@@ -1702,8 +1703,10 @@ def create_site(
             )
             resolved_plan = cheapest.get("name")
 
-        # Build payload — always include group (bench_id) so Press uses
-        # the specific bench. Add server + version for dedicated server flow.
+        # Build payload based on mode:
+        # - Group mode (group provided): use group directly via _new() path
+        #   Do NOT send server — Press ignores group in dedicated server flow
+        # - Server-only mode (no group): send server+version, Press finds/creates bench
         site_payload = {
             "name": site_name,
             "domain": domain,
@@ -1714,7 +1717,7 @@ def create_site(
             "share_details_consent": share_details_consent,
             "agree_region_laws": agree_region_laws,
         }
-        if cloud_server_name:
+        if cloud_server_name and not group_provided:
             site_payload["server"] = cloud_server_name
             site_payload["version"] = bench.get("version", "")
         if provider:
