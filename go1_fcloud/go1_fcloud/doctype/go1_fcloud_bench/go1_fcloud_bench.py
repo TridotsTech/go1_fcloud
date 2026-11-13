@@ -904,11 +904,14 @@ def sync_bench():
         frappe.log_error("sync_bench:cleanup", frappe.get_traceback())
 
     # ----- Step 5: Map benches → servers -----
-    # The Release Group Server child table is not accessible via
-    # frappe.client.get_list (blocked by Frappe Cloud permissions).
-    # Instead, fetch each bench's versions via press.api.bench.versions —
-    # each deployed Bench version includes the server field.
+    # Use press.api.bench.versions to get the server for each bench.
+    # Direct requests are used instead of cloud_post because cloud_request
+    # calls frappe.throw on API errors, which marks the background job as
+    # failed even when the exception is caught in Python.
     try:
+        from go1_fcloud.utils import get_headers, FCLOUD_BASE_URL
+        import requests as _requests
+
         local_servers = frappe.get_all(
             "Go1 FCloud Server",
             fields=["name", "server_id"],
@@ -924,6 +927,7 @@ def sync_bench():
             fields=["name", "id", "bench"],
         )
 
+        headers = get_headers()
         updated = 0
         for lb in local_benches:
             bench_id = lb.get("id")
@@ -931,14 +935,19 @@ def sync_bench():
                 continue
 
             try:
-                versions = (
-                    unwrap(
-                        cloud_post(
-                            "press.api.bench.versions", {"name": bench_id}
-                        )
-                    )
-                    or []
+                resp = _requests.post(
+                    f"{FCLOUD_BASE_URL}/api/method/press.api.bench.versions",
+                    headers=headers,
+                    json={"name": bench_id},
+                    timeout=15,
                 )
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                if "exc" in data or "exception" in data:
+                    continue
+                versions = data.get("message") or []
+
                 cloud_server = ""
                 for ver in versions:
                     cloud_server = ver.get("server") or ""
@@ -963,10 +972,7 @@ def sync_bench():
                 )
                 updated += 1
             except Exception:
-                frappe.log_error(
-                    f"sync_bench:server_mapping:{bench_id}",
-                    frappe.get_traceback(),
-                )
+                pass  # skip silently — server mapping is best-effort
 
         if updated:
             frappe.db.commit()
@@ -977,8 +983,16 @@ def sync_bench():
 def _get_cloud_bench_details(bench_id: str) -> dict:
     from go1_fcloud.utils import cloud_post, unwrap
 
-    regions = unwrap(cloud_post("press.api.bench.regions", {"name": bench_id})) or []
-    apps = unwrap(cloud_post("press.api.bench.apps", {"name": bench_id})) or []
+    regions = []
+    apps = []
+    try:
+        regions = unwrap(cloud_post("press.api.bench.regions", {"name": bench_id})) or []
+    except Exception:
+        pass
+    try:
+        apps = unwrap(cloud_post("press.api.bench.apps", {"name": bench_id})) or []
+    except Exception:
+        pass
     return {
         "region": regions[0].get("name") if regions else "",
         "installed_apps": apps,
