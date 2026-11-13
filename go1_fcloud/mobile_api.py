@@ -1651,10 +1651,9 @@ def create_site(
         app_list = ["frappe"] + [a for a in app_list if a != "frappe"]
 
         # Resolve plan — match by name or title, default to cheapest
+        site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
         resolved_plan = None
         if plan:
-            site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
-            resolved_plan = plan
             for p in site_plans:
                 if p.get("name") == plan:
                     resolved_plan = plan
@@ -1662,19 +1661,26 @@ def create_site(
                 if p.get("plan_title") == plan or str(p.get("name", "")) in plan:
                     resolved_plan = p.get("name")
                     break
+            if not resolved_plan:
+                resolved_plan = plan  # pass through as-is
+        if not resolved_plan and site_plans:
+            # Default to cheapest plan (lowest price_inr)
+            cheapest = min(
+                site_plans,
+                key=lambda p: float(p.get("price_inr", 0) or 0),
+            )
+            resolved_plan = cheapest.get("name")
 
         site_payload = {
             "name": site_name,
             "domain": domain,
             "apps": app_list,
             "group": bench_id,
+            "cluster": cluster or "",
+            "plan": resolved_plan or "",
             "share_details_consent": share_details_consent,
             "agree_region_laws": agree_region_laws,
         }
-        if cluster:
-            site_payload["cluster"] = cluster
-        if resolved_plan:
-            site_payload["plan"] = resolved_plan
         if provider:
             site_payload["provider"] = provider
 
