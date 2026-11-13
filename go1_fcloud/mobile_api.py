@@ -1642,15 +1642,19 @@ def create_site(
             cloud_post("press.api.bench.apps", {"name": bench_id})
         ) or []
         bench_app_names = {a.get("name", ""): a for a in bench_apps}
+        frappe.log_error("create_site:bench_apps", json.dumps(bench_apps, default=str)[:3000])
 
         # Only include apps that exist on the bench
-        # Each app needs {app, source} for the Frappe Cloud API
+        # press.api.site.new expects {app, source} per app
         app_list = []
         seen_apps = set()
         for app_name in requested_apps:
             if app_name in bench_app_names:
                 ba = bench_app_names[app_name]
-                app_list.append({"app": app_name, "source": ba.get("source", "")})
+                src = ba.get("source", "")
+                if isinstance(src, dict):
+                    src = src.get("name") or src.get("source", "")
+                app_list.append({"app": app_name, "source": str(src)})
                 seen_apps.add(app_name)
             else:
                 # Try matching by title
@@ -1658,7 +1662,10 @@ def create_site(
                 for ba in bench_apps:
                     if ba.get("title", "").lower() == app_name.lower():
                         real_name = ba.get("name", "")
-                        app_list.append({"app": real_name, "source": ba.get("source", "")})
+                        src = ba.get("source", "")
+                        if isinstance(src, dict):
+                            src = src.get("name") or src.get("source", "")
+                        app_list.append({"app": real_name, "source": str(src)})
                         seen_apps.add(real_name)
                         matched = True
                         break
@@ -1671,7 +1678,10 @@ def create_site(
         # frappe must be the first app in the list
         if "frappe" not in seen_apps and "frappe" in bench_app_names:
             ba = bench_app_names["frappe"]
-            app_list.insert(0, {"app": "frappe", "source": ba.get("source", "")})
+            src = ba.get("source", "")
+            if isinstance(src, dict):
+                src = src.get("name") or src.get("source", "")
+            app_list.insert(0, {"app": "frappe", "source": str(src)})
         else:
             # Move frappe to front
             frappe_entry = None
