@@ -1643,17 +1643,23 @@ def create_site(
         ) or []
         bench_app_names = {a.get("name", ""): a for a in bench_apps}
 
-        # Only include apps that exist on the bench (skip frappe)
+        # Only include apps that exist on the bench
+        # Each app needs {app, source} for the Frappe Cloud API
         app_list = []
+        seen_apps = set()
         for app_name in requested_apps:
             if app_name in bench_app_names:
-                app_list.append(app_name)
+                ba = bench_app_names[app_name]
+                app_list.append({"app": app_name, "source": ba.get("source", "")})
+                seen_apps.add(app_name)
             else:
                 # Try matching by title
                 matched = False
                 for ba in bench_apps:
                     if ba.get("title", "").lower() == app_name.lower():
-                        app_list.append(ba.get("name", ""))
+                        real_name = ba.get("name", "")
+                        app_list.append({"app": real_name, "source": ba.get("source", "")})
+                        seen_apps.add(real_name)
                         matched = True
                         break
                 if not matched:
@@ -1663,7 +1669,20 @@ def create_site(
                     )
 
         # frappe must be the first app in the list
-        app_list = ["frappe"] + [a for a in app_list if a != "frappe"]
+        if "frappe" not in seen_apps and "frappe" in bench_app_names:
+            ba = bench_app_names["frappe"]
+            app_list.insert(0, {"app": "frappe", "source": ba.get("source", "")})
+        else:
+            # Move frappe to front
+            frappe_entry = None
+            rest = []
+            for entry in app_list:
+                if entry["app"] == "frappe":
+                    frappe_entry = entry
+                else:
+                    rest.append(entry)
+            if frappe_entry:
+                app_list = [frappe_entry] + rest
 
         # Resolve plan — match by name or title, default to cheapest
         site_plans = unwrap(cloud_get("press.api.site.get_site_plans")) or []
