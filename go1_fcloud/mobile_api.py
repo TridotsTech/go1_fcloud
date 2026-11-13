@@ -2798,15 +2798,9 @@ def stop_deploy(name, candidate=None):
 def _stop_bench_deploy(bench_id, candidate=None):
     """Shared helper to stop a deploy for a bench (used by bench_action and stop_deploy)."""
 
-    # If a specific candidate was given, try to cancel it directly
-    if candidate:
-        result = _cancel_deploy_candidate(bench_id, candidate)
-        if result:
-            return _ok(result)
-        return _err(f"Could not cancel deploy '{candidate}'.")
-
-    # No specific candidate — get deploy info from bench
-    # press.api.bench.get returns deploy_information with last deploy candidate
+    # Always fetch deploy info from bench to get the correct Deploy Candidate
+    # name. The caller's `candidate` may be a Deploy Candidate Build name
+    # (not the same as Deploy Candidate), so we resolve from bench info.
     try:
         bench_info = unwrap(
             cloud_post("press.api.bench.get", {"name": bench_id})
@@ -2816,18 +2810,44 @@ def _stop_bench_deploy(bench_id, candidate=None):
         dc_name = last_dc.get("name")
         dc_status = last_dc.get("status", "")
 
-        if dc_name and dc_status in ("Pending", "Running"):
+        frappe.log_error(
+            "stop_deploy:deploy_info",
+            json.dumps({"bench_id": bench_id, "candidate_param": candidate,
+                        "deploy_info": deploy_info}, default=str)[:3000],
+        )
+
+        if dc_name and dc_status in ("Pending", "Running", "Preparing"):
             result = _cancel_deploy_candidate(bench_id, dc_name)
             if result:
                 return _ok(result)
-    except Exception:
-        pass
 
-    return _err("No active deploy found to stop.")
+        # If no active deploy found via last_deploy, try with caller's candidate
+        if candidate and candidate != dc_name:
+            result = _cancel_deploy_candidate(bench_id, candidate)
+            if result:
+                return _ok(result)
+
+    except Exception:
+        frappe.log_error("stop_deploy:fetch_info", frappe.get_traceback())
+        # Fallback: try with caller's candidate directly
+        if candidate:
+            result = _cancel_deploy_candidate(bench_id, candidate)
+            if result:
+                return _ok(result)
+
+    # Clear accumulated error messages from failed attempts
+    if hasattr(frappe.local, "message_log"):
+        frappe.local.message_log = []
+
+    return _err(f"No active deploy found to stop for bench '{bench_id}'.")
 
 
 def _cancel_deploy_candidate(bench_id, candidate_name):
     """Cancel a deploy by name. Tries multiple Press API approaches."""
+    def _clear_msg_log():
+        if hasattr(frappe.local, "message_log"):
+            frappe.local.message_log = []
+
     # 1. Try press.api.bench.fail_build (stops a running build job)
     try:
         result = unwrap(
@@ -2839,13 +2859,13 @@ def _cancel_deploy_candidate(bench_id, candidate_name):
         return {
             "candidate": candidate_name,
             "status": "Cancelled",
+            "method": "fail_build",
             "result": result,
         }
     except Exception:
-        pass
+        _clear_msg_log()
 
-    # 2. Try press.api.bench.fail_and_redeploy to fail then get new candidate
-    #    (this just fails the build, we ignore the redeploy result)
+    # 2. Try press.api.bench.fail_and_redeploy
     try:
         result = unwrap(
             cloud_post(
@@ -2856,27 +2876,30 @@ def _cancel_deploy_candidate(bench_id, candidate_name):
         return {
             "candidate": candidate_name,
             "status": "Cancelled",
+            "method": "fail_and_redeploy",
             "result": result,
         }
     except Exception:
-        pass
+        _clear_msg_log()
 
-    # 3. Try press.api.client.run_doc_method to cancel directly
-    for doctype in ("Deploy Candidate", "Release Pipeline"):
+    # 3. Try press.api.client.run_doc_method
+    for doctype in ("Deploy Candidate", "Deploy Candidate Build"):
         try:
             result = unwrap(
                 cloud_post(
                     "press.api.client.run_doc_method",
-                    {"dt": doctype, "dn": candidate_name, "method": "cancel"},
+                    {"dt": doctype, "dn": candidate_name, "method": "fail"},
                 )
             )
             return {
                 "candidate": candidate_name,
                 "doctype": doctype,
                 "status": "Cancelled",
+                "method": "run_doc_method",
                 "result": result,
             }
         except Exception:
+            _clear_msg_log()
             continue
 
     return None
