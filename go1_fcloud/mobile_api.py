@@ -2803,7 +2803,8 @@ def _stop_bench_deploy(bench_id, candidate=None):
 
 
 def _cancel_deploy_candidate(bench_id, candidate_name):
-    """Cancel a deploy by name using press.api.bench.fail_build."""
+    """Cancel a deploy by name. Tries multiple Press API approaches."""
+    # 1. Try press.api.bench.fail_build (stops a running build job)
     try:
         result = unwrap(
             cloud_post(
@@ -2818,6 +2819,41 @@ def _cancel_deploy_candidate(bench_id, candidate_name):
         }
     except Exception:
         pass
+
+    # 2. Try press.api.bench.fail_and_redeploy to fail then get new candidate
+    #    (this just fails the build, we ignore the redeploy result)
+    try:
+        result = unwrap(
+            cloud_post(
+                "press.api.bench.fail_and_redeploy",
+                {"name": bench_id, "dc_name": candidate_name},
+            )
+        )
+        return {
+            "candidate": candidate_name,
+            "status": "Cancelled",
+            "result": result,
+        }
+    except Exception:
+        pass
+
+    # 3. Try press.api.client.run_doc_method to cancel directly
+    for doctype in ("Deploy Candidate", "Release Pipeline"):
+        try:
+            result = unwrap(
+                cloud_post(
+                    "press.api.client.run_doc_method",
+                    {"dt": doctype, "dn": candidate_name, "method": "cancel"},
+                )
+            )
+            return {
+                "candidate": candidate_name,
+                "doctype": doctype,
+                "status": "Cancelled",
+                "result": result,
+            }
+        except Exception:
+            continue
 
     return None
 
