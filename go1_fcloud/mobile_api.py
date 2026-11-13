@@ -2496,8 +2496,10 @@ def bench_action(name, action, extra=None):
     Args:
       name:   Go1 FCloud Bench doc name
       action: restart | rebuild | update_all_sites | archive |
-              deploy_check | remove_app | change_branch | generate_ssh_key
+              deploy_check | stop_deploy | remove_app | change_branch |
+              generate_ssh_key
       extra:  JSON string with optional params
+              stop_deploy:   {"candidate": "pipeline-name"} (optional — stops latest if omitted)
               remove_app:    {"app": "erpnext"}
               change_branch: {"app": "erpnext", "to_branch": "version-15"}
     """
@@ -2564,6 +2566,11 @@ def bench_action(name, action, extra=None):
                 {"name": bench_id, "app": app, "to_branch": to_branch},
             )
             return _ok(unwrap(result))
+
+        elif action == "stop_deploy":
+            params = json.loads(extra) if isinstance(extra, str) and extra else {}
+            candidate = params.get("candidate", "")
+            return _stop_bench_deploy(bench_id, candidate)
 
         elif action == "generate_ssh_key":
             # Try to get an existing valid certificate first
@@ -2635,7 +2642,7 @@ def bench_action(name, action, extra=None):
 
         else:
             return _err(
-                f"Unknown action: {action}. Valid: restart, rebuild, update_all_sites, archive, deploy_check, remove_app, change_branch, generate_ssh_key"
+                f"Unknown action: {action}. Valid: restart, rebuild, update_all_sites, archive, deploy_check, stop_deploy, remove_app, change_branch, generate_ssh_key"
             )
 
     except frappe.ValidationError as e:
@@ -2665,6 +2672,137 @@ def deploy_and_update(bench_id, apps, sites):
     except Exception:
         frappe.log_error("mobile_api.deploy_and_update", frappe.get_traceback())
         return _err("Failed to deploy and update bench.")
+
+
+@frappe.whitelist()
+def stop_deploy(name, candidate=None):
+    """
+    Stop / cancel an active deploy for a bench.
+
+    Args:
+      name:       Go1 FCloud Bench doc name, cloud bench ID, or bench title
+      candidate:  Specific Release Pipeline or Deploy Candidate name to cancel.
+                  If omitted, cancels the most recent running deploy.
+    """
+    try:
+        _require_role()
+        _, bench_id = _resolve_bench(name)
+        return _stop_bench_deploy(bench_id, candidate)
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.stop_deploy", frappe.get_traceback())
+        return _err("Failed to stop deploy.")
+
+
+def _stop_bench_deploy(bench_id, candidate=None):
+    """Shared helper to stop a deploy for a bench (used by bench_action and stop_deploy)."""
+
+    # If a specific candidate was given, try to cancel it directly
+    if candidate:
+        result = _cancel_deploy_candidate(candidate)
+        if result:
+            return _ok(result)
+        return _err(f"Could not cancel deploy '{candidate}'.")
+
+    # No specific candidate — find the most recent running deploy
+    # Try Release Pipeline first (newer deploy system)
+    pipelines = (
+        unwrap(
+            cloud_post(
+                "press.api.client.get_list",
+                {
+                    "doctype": "Release Pipeline",
+                    "filters": {
+                        "release_group": bench_id,
+                        "status": ("in", ["Pending", "Running"]),
+                    },
+                    "fields": ["name", "status"],
+                    "order_by": "creation desc",
+                    "limit_page_length": 1,
+                },
+            )
+        )
+        or []
+    )
+    if pipelines:
+        result = _cancel_deploy_candidate(pipelines[0]["name"])
+        if result:
+            return _ok(result)
+
+    # Fallback: try Deploy Candidate (older deploy system)
+    candidates = (
+        unwrap(
+            cloud_post(
+                "press.api.client.get_list",
+                {
+                    "doctype": "Deploy Candidate",
+                    "filters": {
+                        "group": bench_id,
+                        "status": ("in", ["Pending", "Running"]),
+                    },
+                    "fields": ["name", "status"],
+                    "order_by": "creation desc",
+                    "limit_page_length": 1,
+                },
+            )
+        )
+        or []
+    )
+    if candidates:
+        result = _cancel_deploy_candidate(candidates[0]["name"])
+        if result:
+            return _ok(result)
+
+    return _err("No active deploy found to stop.")
+
+
+def _cancel_deploy_candidate(candidate_name):
+    """Cancel a deploy by name. Tries Release Pipeline, then Deploy Candidate."""
+    # Try as Release Pipeline
+    for doctype in ("Release Pipeline", "Deploy Candidate"):
+        try:
+            result = unwrap(
+                cloud_post(
+                    "press.api.client.run_doc_method",
+                    {
+                        "dt": doctype,
+                        "dn": candidate_name,
+                        "method": "cancel",
+                    },
+                )
+            )
+            return {
+                "candidate": candidate_name,
+                "doctype": doctype,
+                "status": "Cancelled",
+                "result": result,
+            }
+        except Exception:
+            continue
+
+    # Fallback: try setting status directly via press.api.client.set_value
+    try:
+        result = unwrap(
+            cloud_post(
+                "frappe.client.set_value",
+                {
+                    "doctype": "Deploy Candidate",
+                    "name": candidate_name,
+                    "fieldname": "status",
+                    "value": "Failure",
+                },
+            )
+        )
+        return {
+            "candidate": candidate_name,
+            "status": "Cancelled",
+            "result": result,
+        }
+    except Exception:
+        pass
+
+    return None
 
 
 @frappe.whitelist()
