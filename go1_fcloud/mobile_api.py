@@ -1616,9 +1616,24 @@ def create_site(
         else:
             return _err("Either 'group' (bench) or 'server' is required.")
 
-        # If server-only mode (no group provided), resolve cloud server ID
-        # from the bench doc for the payload
-        if not cloud_server_name and not group_provided and server:
+        # Resolve cloud server ID from bench doc or server param
+        if not cloud_server_name and server:
+            # server param provided but cloud_server_name not yet resolved
+            server_doc = None
+            if frappe.db.exists("Go1 FCloud Server", server):
+                server_doc = server
+            else:
+                server_doc = frappe.db.get_value(
+                    "Go1 FCloud Server", {"server_name": server}, "name"
+                ) or frappe.db.get_value(
+                    "Go1 FCloud Server", {"server_id": server}, "name"
+                )
+            if server_doc:
+                cloud_server_name = frappe.db.get_value(
+                    "Go1 FCloud Server", server_doc, "server_id"
+                )
+        if not cloud_server_name:
+            # Try resolving from the bench doc's server link
             bench_doc = frappe.db.get_value(
                 "Go1 FCloud Bench", {"id": bench_id}, ["server", "server_id"], as_dict=True
             ) or {}
@@ -1703,29 +1718,45 @@ def create_site(
             )
             resolved_plan = cheapest.get("name")
 
-        # Build payload based on mode:
-        # - Group mode (group provided): use group directly via _new() path
-        #   Do NOT send server — Press ignores group in dedicated server flow
-        # - Server-only mode (no group): send server+version, Press finds/creates bench
-        site_payload = {
-            "name": site_name,
-            "domain": domain,
-            "apps": app_list,
-            "group": bench_id,
-            "cluster": cluster or "",
-            "plan": resolved_plan or "",
-            "share_details_consent": share_details_consent,
-            "agree_region_laws": agree_region_laws,
-        }
-        if cloud_server_name and not group_provided:
-            site_payload["server"] = cloud_server_name
-            site_payload["version"] = bench.get("version", "")
-        if provider:
-            site_payload["provider"] = provider
+        if group_provided and cloud_server_name:
+            # Dedicated server + specific bench: create Site doc directly
+            # via press.api.client.insert to bypass press.api.site.new's
+            # bench-matching logic which ignores the group we specify.
+            site_doc = {
+                "doctype": "Site",
+                "subdomain": site_name,
+                "domain": domain,
+                "group": bench_id,
+                "server": cloud_server_name,
+                "cluster": cluster or "",
+                "apps": [{"app": a} for a in app_list],
+                "subscription_plan": resolved_plan or "",
+                "version": bench.get("version", ""),
+            }
+            frappe.log_error("create_site:insert_payload", json.dumps(site_doc, default=str))
+            result = cloud_post("press.api.client.insert", {"doc": site_doc})
+            return _ok(unwrap(result))
+        else:
+            # Standard flow: server-only or group-only
+            site_payload = {
+                "name": site_name,
+                "domain": domain,
+                "apps": app_list,
+                "group": bench_id,
+                "cluster": cluster or "",
+                "plan": resolved_plan or "",
+                "share_details_consent": share_details_consent,
+                "agree_region_laws": agree_region_laws,
+            }
+            if cloud_server_name and not group_provided:
+                site_payload["server"] = cloud_server_name
+                site_payload["version"] = bench.get("version", "")
+            if provider:
+                site_payload["provider"] = provider
 
-        frappe.log_error("create_site:payload", json.dumps(site_payload, default=str))
-        result = cloud_post("press.api.site.new", {"site": site_payload})
-        return _ok(unwrap(result))
+            frappe.log_error("create_site:payload", json.dumps(site_payload, default=str))
+            result = cloud_post("press.api.site.new", {"site": site_payload})
+            return _ok(unwrap(result))
     except frappe.ValidationError as e:
         return _err(str(e))
     except Exception:
