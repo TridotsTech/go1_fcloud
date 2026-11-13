@@ -2798,32 +2798,46 @@ def stop_deploy(name, candidate=None):
 def _stop_bench_deploy(bench_id, candidate=None):
     """Shared helper to stop a deploy for a bench (used by bench_action and stop_deploy)."""
 
-    # Always fetch deploy info from bench to get the correct Deploy Candidate
-    # name. The caller's `candidate` may be a Deploy Candidate Build name
-    # (not the same as Deploy Candidate), so we resolve from bench info.
+    # Fetch deploy_information (separate endpoint from bench.get)
+    # Returns: last_deploy (Deploy Candidate Build: name, status, creation),
+    #          deploy_in_progress, has_running_release_pipeline
     try:
-        bench_info = unwrap(
-            cloud_post("press.api.bench.get", {"name": bench_id})
+        deploy_info = unwrap(
+            cloud_post("press.api.bench.deploy_information", {"name": bench_id})
         ) or {}
-        deploy_info = bench_info.get("deploy_information", {})
-        last_dc = deploy_info.get("last_deploy", {})
-        dc_name = last_dc.get("name")
+
+        last_dc = deploy_info.get("last_deploy") or {}
+        dc_build_name = last_dc.get("name", "")
         dc_status = last_dc.get("status", "")
+        deploy_in_progress = deploy_info.get("deploy_in_progress", False)
 
         frappe.log_error(
             "stop_deploy:deploy_info",
-            json.dumps({"bench_id": bench_id, "candidate_param": candidate,
-                        "deploy_info": deploy_info}, default=str)[:3000],
+            json.dumps({
+                "bench_id": bench_id, "candidate_param": candidate,
+                "last_deploy": last_dc, "deploy_in_progress": deploy_in_progress,
+                "has_running_pipeline": deploy_info.get("has_running_release_pipeline"),
+            }, default=str)[:3000],
         )
 
-        if dc_name and dc_status in ("Pending", "Running", "Preparing"):
-            result = _cancel_deploy_candidate(bench_id, dc_name)
-            if result:
-                return _ok(result)
+        if not deploy_in_progress:
+            # Clear error messages
+            if hasattr(frappe.local, "message_log"):
+                frappe.local.message_log = []
+            return _err("No active deploy in progress.")
 
-        # If no active deploy found via last_deploy, try with caller's candidate
-        if candidate and candidate != dc_name:
-            result = _cancel_deploy_candidate(bench_id, candidate)
+        # The last_deploy.name is a Deploy Candidate Build name.
+        # fail_build expects a Deploy Candidate name (the parent).
+        # Try using the build name directly with fail_build first,
+        # then try the caller's candidate.
+        names_to_try = []
+        if dc_build_name:
+            names_to_try.append(dc_build_name)
+        if candidate and candidate not in names_to_try:
+            names_to_try.append(candidate)
+
+        for dn in names_to_try:
+            result = _cancel_deploy_candidate(bench_id, dn)
             if result:
                 return _ok(result)
 
@@ -2839,7 +2853,7 @@ def _stop_bench_deploy(bench_id, candidate=None):
     if hasattr(frappe.local, "message_log"):
         frappe.local.message_log = []
 
-    return _err(f"No active deploy found to stop for bench '{bench_id}'.")
+    return _err(f"Could not stop deploy for bench '{bench_id}'. Check error log for details.")
 
 
 def _cancel_deploy_candidate(bench_id, candidate_name):
