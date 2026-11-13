@@ -904,50 +904,11 @@ def sync_bench():
         frappe.log_error("sync_bench:cleanup", frappe.get_traceback())
 
     # ----- Step 5: Map benches → servers -----
-    # The Press bench list/get endpoints do NOT return a server field.
-    # The relationship lives in the "Release Group Server" child table.
-    # Query that child table directly via frappe.client.get_list to get
-    # all bench→cloud_server mappings in one call.
+    # The Release Group Server child table is not accessible via
+    # frappe.client.get_list (blocked by Frappe Cloud permissions).
+    # Instead, fetch each bench's versions via press.api.bench.versions —
+    # each deployed Bench version includes the server field.
     try:
-        rg_servers = (
-            unwrap(
-                cloud_post(
-                    "frappe.client.get_list",
-                    {
-                        "doctype": "Release Group Server",
-                        "fields": ["parent", "server"],
-                        "page_length": 0,
-                    },
-                )
-            )
-            or []
-        )
-
-        if not rg_servers:
-            # Fallback: try REST-style get_list with string fields
-            rg_servers = (
-                unwrap(
-                    cloud_get(
-                        "frappe.client.get_list",
-                        {
-                            "doctype": "Release Group Server",
-                            "fields": '["parent","server"]',
-                            "limit_page_length": "0",
-                        },
-                    )
-                )
-                or []
-            )
-
-        # Build bench_id → cloud_server_name mapping (first server per bench)
-        bench_to_cloud_server = {}
-        for rgs in rg_servers:
-            parent = rgs.get("parent") or ""
-            server_name = rgs.get("server") or ""
-            if parent and server_name and parent not in bench_to_cloud_server:
-                bench_to_cloud_server[parent] = server_name
-
-        # Build cloud_server_name → local Go1 FCloud Server doc name mapping
         local_servers = frappe.get_all(
             "Go1 FCloud Server",
             fields=["name", "server_id"],
@@ -958,39 +919,10 @@ def sync_bench():
             if srv.get("server_id")
         }
 
-        # Apply mapping to all local benches
         local_benches = frappe.get_all(
             "Go1 FCloud Bench",
             fields=["name", "id", "bench"],
         )
-
-        # Per-bench fallback: for benches not covered by the bulk get_list,
-        # fetch bench versions via press.api.bench.versions — each deployed
-        # Bench version has a server field.
-        unmapped_bench_ids = [
-            lb.get("id") for lb in local_benches
-            if lb.get("id") and lb["id"] not in bench_to_cloud_server
-        ]
-        for bid in unmapped_bench_ids:
-            try:
-                versions = (
-                    unwrap(
-                        cloud_post(
-                            "press.api.bench.versions", {"name": bid}
-                        )
-                    )
-                    or []
-                )
-                for ver in versions:
-                    srv_name = ver.get("server") or ""
-                    if srv_name:
-                        bench_to_cloud_server[bid] = srv_name
-                        break
-            except Exception:
-                frappe.log_error(
-                    f"sync_bench:server_mapping:fallback:{bid}",
-                    frappe.get_traceback(),
-                )
 
         updated = 0
         for lb in local_benches:
@@ -998,24 +930,43 @@ def sync_bench():
             if not bench_id:
                 continue
 
-            cloud_server = bench_to_cloud_server.get(bench_id)
-            if not cloud_server:
-                continue
+            try:
+                versions = (
+                    unwrap(
+                        cloud_post(
+                            "press.api.bench.versions", {"name": bench_id}
+                        )
+                    )
+                    or []
+                )
+                cloud_server = ""
+                for ver in versions:
+                    cloud_server = ver.get("server") or ""
+                    if cloud_server:
+                        break
 
-            local_server = cloud_to_local_server.get(cloud_server)
-            if not local_server:
-                continue
+                if not cloud_server:
+                    continue
 
-            frappe.db.set_value(
-                "Go1 FCloud Bench",
-                lb["name"],
-                {
-                    "server_id": cloud_server,
-                    "server": local_server,
-                },
-                update_modified=False,
-            )
-            updated += 1
+                local_server = cloud_to_local_server.get(cloud_server)
+                if not local_server:
+                    continue
+
+                frappe.db.set_value(
+                    "Go1 FCloud Bench",
+                    lb["name"],
+                    {
+                        "server_id": cloud_server,
+                        "server": local_server,
+                    },
+                    update_modified=False,
+                )
+                updated += 1
+            except Exception:
+                frappe.log_error(
+                    f"sync_bench:server_mapping:{bench_id}",
+                    frappe.get_traceback(),
+                )
 
         if updated:
             frappe.db.commit()
