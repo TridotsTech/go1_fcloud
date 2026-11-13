@@ -904,10 +904,12 @@ def sync_bench():
         frappe.log_error("sync_bench:cleanup", frappe.get_traceback())
 
     # ----- Step 5: Map benches → servers -----
-    # Use press.api.bench.versions to get the server for each bench.
-    # Direct requests are used instead of cloud_post because cloud_request
-    # calls frappe.throw on API errors, which marks the background job as
-    # failed even when the exception is caught in Python.
+    # Use press.api.bench.get (the Release Group doc endpoint) which returns
+    # the full doc including the "servers" child table.
+    # Direct HTTP requests are used instead of cloud_post/cloud_request
+    # because cloud_request calls frappe.throw on API errors, which adds to
+    # frappe.local.message_log and marks background jobs as failed even when
+    # the exception is caught in Python.
     try:
         from go1_fcloud.utils import get_headers, FCLOUD_BASE_URL
         import requests as _requests
@@ -936,7 +938,7 @@ def sync_bench():
 
             try:
                 resp = _requests.post(
-                    f"{FCLOUD_BASE_URL}/api/method/press.api.bench.versions",
+                    f"{FCLOUD_BASE_URL}/api/method/press.api.bench.get",
                     headers=headers,
                     json={"name": bench_id},
                     timeout=15,
@@ -946,13 +948,18 @@ def sync_bench():
                 data = resp.json()
                 if "exc" in data or "exception" in data:
                     continue
-                versions = data.get("message") or []
+                bench_doc = data.get("message") or {}
 
+                # Extract server from the "servers" child table
                 cloud_server = ""
-                for ver in versions:
-                    cloud_server = ver.get("server") or ""
+                for srv in bench_doc.get("servers") or []:
+                    cloud_server = srv.get("server") or ""
                     if cloud_server:
                         break
+
+                # Fallback: try top-level "server" field
+                if not cloud_server:
+                    cloud_server = bench_doc.get("server") or ""
 
                 if not cloud_server:
                     continue
