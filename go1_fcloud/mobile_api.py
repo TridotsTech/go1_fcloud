@@ -2742,98 +2742,39 @@ def _stop_bench_deploy(bench_id, candidate=None):
 
     # If a specific candidate was given, try to cancel it directly
     if candidate:
-        result = _cancel_deploy_candidate(candidate)
+        result = _cancel_deploy_candidate(bench_id, candidate)
         if result:
             return _ok(result)
         return _err(f"Could not cancel deploy '{candidate}'.")
 
-    # No specific candidate — find the most recent running deploy
-    # Try Release Pipeline first (newer deploy system)
-    pipelines = (
-        unwrap(
-            cloud_post(
-                "press.api.client.get_list",
-                {
-                    "doctype": "Release Pipeline",
-                    "filters": {
-                        "release_group": bench_id,
-                        "status": ("in", ["Pending", "Running"]),
-                    },
-                    "fields": ["name", "status"],
-                    "order_by": "creation desc",
-                    "limit_page_length": 1,
-                },
-            )
-        )
-        or []
-    )
-    if pipelines:
-        result = _cancel_deploy_candidate(pipelines[0]["name"])
-        if result:
-            return _ok(result)
+    # No specific candidate — get deploy info from bench
+    # press.api.bench.get returns deploy_information with last deploy candidate
+    try:
+        bench_info = unwrap(
+            cloud_post("press.api.bench.get", {"name": bench_id})
+        ) or {}
+        deploy_info = bench_info.get("deploy_information", {})
+        last_dc = deploy_info.get("last_deploy", {})
+        dc_name = last_dc.get("name")
+        dc_status = last_dc.get("status", "")
 
-    # Fallback: try Deploy Candidate (older deploy system)
-    candidates = (
-        unwrap(
-            cloud_post(
-                "press.api.client.get_list",
-                {
-                    "doctype": "Deploy Candidate",
-                    "filters": {
-                        "group": bench_id,
-                        "status": ("in", ["Pending", "Running"]),
-                    },
-                    "fields": ["name", "status"],
-                    "order_by": "creation desc",
-                    "limit_page_length": 1,
-                },
-            )
-        )
-        or []
-    )
-    if candidates:
-        result = _cancel_deploy_candidate(candidates[0]["name"])
-        if result:
-            return _ok(result)
+        if dc_name and dc_status in ("Pending", "Running"):
+            result = _cancel_deploy_candidate(bench_id, dc_name)
+            if result:
+                return _ok(result)
+    except Exception:
+        pass
 
     return _err("No active deploy found to stop.")
 
 
-def _cancel_deploy_candidate(candidate_name):
-    """Cancel a deploy by name. Tries Release Pipeline, then Deploy Candidate."""
-    # Try as Release Pipeline
-    for doctype in ("Release Pipeline", "Deploy Candidate"):
-        try:
-            result = unwrap(
-                cloud_post(
-                    "press.api.client.run_doc_method",
-                    {
-                        "dt": doctype,
-                        "dn": candidate_name,
-                        "method": "cancel",
-                    },
-                )
-            )
-            return {
-                "candidate": candidate_name,
-                "doctype": doctype,
-                "status": "Cancelled",
-                "result": result,
-            }
-        except Exception:
-            continue
-
-    # Fallback: try setting status directly via press.api.client.set_value
+def _cancel_deploy_candidate(bench_id, candidate_name):
+    """Cancel a deploy by name using press.api.bench.fail_build."""
     try:
         result = unwrap(
             cloud_post(
-                "frappe.client.set_value",
-                {
-                    "doctype": "Deploy Candidate",
-                    "name": candidate_name,
-                    "fieldname": "status",
-                    "value": "Failure",
-                },
+                "press.api.bench.fail_build",
+                {"name": bench_id, "dn": candidate_name},
             )
         )
         return {
