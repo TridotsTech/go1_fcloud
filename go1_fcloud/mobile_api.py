@@ -2201,6 +2201,17 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
         if status_filter:
             filters["status"] = status_filter
         if server:
+            # Resolve server: accept doc name, server_name (title), or server_id
+            if not frappe.db.exists("Go1 FCloud Server", server):
+                server = frappe.db.get_value(
+                    "Go1 FCloud Server",
+                    {"server_name": server},
+                    "name",
+                ) or frappe.db.get_value(
+                    "Go1 FCloud Server",
+                    {"server_id": server},
+                    "name",
+                ) or server
             filters["server"] = server
         if search:
             filters["bench"] = ("like", f"%{search}%")
@@ -2243,14 +2254,18 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
         )
         has_next = (start + limit) < total_filtered
 
-        # Collect unique servers for filter dropdown
-        server_list = frappe.get_list(
+        # Collect unique servers for filter dropdown (with display names)
+        server_link_names = frappe.get_list(
             "Go1 FCloud Bench",
             filters={"is_dropped": 0, "server": ("is", "set")},
             fields=["distinct server as server"],
             ignore_ifnull=True,
         )
-        servers = sorted(s["server"] for s in server_list if s.get("server"))
+        server_names = [s["server"] for s in server_link_names if s.get("server")]
+        servers = []
+        for sn in sorted(server_names):
+            title = frappe.db.get_value("Go1 FCloud Server", sn, "server_name") or sn
+            servers.append({"name": sn, "title": title})
 
         # Build response
         benches = []
@@ -2263,6 +2278,12 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
             )
             app_names = [a["title"] for a in apps if a.get("title")]
 
+            server_doc_name = b.get("server", "")
+            server_title = (
+                frappe.db.get_value("Go1 FCloud Server", server_doc_name, "server_name")
+                if server_doc_name else ""
+            ) or server_doc_name
+
             benches.append({
                 "name": b.get("name", ""),
                 "bench_id": b.get("id", ""),
@@ -2270,7 +2291,8 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
                 "status": b.get("status", ""),
                 "version": b.get("version", ""),
                 "region": b.get("region", ""),
-                "server": b.get("server", ""),
+                "server": server_doc_name,
+                "server_title": server_title,
                 "project": b.get("project", ""),
                 "creation": b.get("creation", ""),
                 "modified": b.get("modified", ""),
