@@ -1580,6 +1580,7 @@ def create_site(
 
         # Resolve bench ID — from group param or via server lookup
         bench_id = None
+        cloud_server_name = None  # Frappe Cloud server ID (e.g. f962-mumbai.frappe.cloud)
         if group:
             _, bench_id = _resolve_bench(group)
         elif server:
@@ -1596,6 +1597,11 @@ def create_site(
             if not server_doc:
                 return _err(f"Server '{server}' not found.")
 
+            # Get cloud server ID for the payload
+            cloud_server_name = frappe.db.get_value(
+                "Go1 FCloud Server", server_doc, "server_id"
+            )
+
             # Find the first active bench on this server
             bench_doc_name = frappe.db.get_value(
                 "Go1 FCloud Bench",
@@ -1608,6 +1614,15 @@ def create_site(
             _, bench_id = _resolve_bench(bench_doc_name)
         else:
             return _err("Either 'group' (bench) or 'server' is required.")
+
+        # If server was passed via group (not server param), resolve cloud server
+        # from the local bench doc
+        if not cloud_server_name and group:
+            bench_doc = frappe.db.get_value(
+                "Go1 FCloud Bench", {"id": bench_id}, ["server", "server_id"], as_dict=True
+            ) or {}
+            if bench_doc.get("server_id"):
+                cloud_server_name = bench_doc["server_id"]
 
         # Verify bench is active
         bench = unwrap(cloud_post("press.api.bench.get", {"name": bench_id}))
@@ -1676,11 +1691,13 @@ def create_site(
             "domain": domain,
             "apps": app_list,
             "group": bench_id,
-            "cluster": cluster or "",
+            "cluster": cluster if not cloud_server_name else None,
             "plan": resolved_plan or "",
             "share_details_consent": share_details_consent,
             "agree_region_laws": agree_region_laws,
         }
+        if cloud_server_name:
+            site_payload["server"] = cloud_server_name
         if provider:
             site_payload["provider"] = provider
 
