@@ -1635,7 +1635,22 @@ def create_site(
 
         # Auto-resolve cluster from bench if not provided
         if not cluster:
-            cluster = bench.get("cluster") or bench.get("region") or None
+            cluster = (
+                bench.get("cluster")
+                or bench.get("region")
+                or bench.get("server_region_info", {}).get("name")
+                or None
+            )
+        # Fallback: fetch cluster from bench regions API
+        if not cluster:
+            try:
+                regions = unwrap(
+                    cloud_post("press.api.bench.regions", {"name": bench_id})
+                ) or []
+                if regions:
+                    cluster = regions[0].get("name", "")
+            except Exception:
+                pass
 
         # Fetch apps available on the bench to validate and get correct names
         bench_apps = unwrap(
@@ -1703,7 +1718,7 @@ def create_site(
             # to find/create a bench on the dedicated server
             site_payload["server"] = cloud_server_name
             site_payload["version"] = bench.get("version", "")
-            site_payload["cluster"] = cluster or None
+            site_payload["cluster"] = cluster or ""
         else:
             # Group-based: Press uses the group directly via _new()
             site_payload["group"] = bench_id
