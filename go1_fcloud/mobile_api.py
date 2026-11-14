@@ -1434,125 +1434,115 @@ def _find_backup_by_url(backups, url):
 
 
 @frappe.whitelist(methods=["POST"])
-def get_upload_link(name: str, file: str, parts: int = 1):
+def site_upload(
+    name: str,
+    action: str,
+    file: str,
+    parts: int = None,
+    upload_id: str = None,
+    upload_action: str = None,
+    etags: str = None,
+    path: str = None,
+    type: str = None,
+    size: int = None,
+    url: str = None,
+):
     """
-    Get presigned S3 URL(s) for uploading backup files.
+    Unified file upload API for site backup restore.
+
+    Handles three stages of the presigned-URL upload flow via the 'action' param:
+
+    action="get_link"  — Get presigned S3 URL(s) for uploading.
+      Required: file
+      Optional: parts (default 1; >1 for multipart upload)
+      Returns:  presigned URL(s) and upload_id (for multipart)
+
+    action="complete_multipart" — Complete or abort a multipart upload.
+      Required: file, upload_id, etags (JSON string of part ETags)
+      Optional: upload_action ("complete" or "abort", default "complete")
+
+    action="register" — Register the uploaded file as a Remote File.
+      Required: file, path, type, size, url
+      type: one of "database", "public", "private", "config"
+      Returns:  Remote File doc name (pass to site_restore)
 
     Args:
-      name:   Go1 FCloud Site doc name or Frappe Cloud site name
-      file:   Filename to upload (e.g. "20241114_backup.sql.gz")
-      parts:  Number of parts for multipart upload (default 1)
-
-    Returns presigned URL(s) that the client uses to PUT files directly to S3.
+      name:           Go1 FCloud Site doc name or Frappe Cloud site name
+      action:         "get_link", "complete_multipart", or "register"
+      file:           Filename (e.g. "20241114_backup.sql.gz")
+      parts:          Number of multipart parts (get_link only)
+      upload_id:      Upload ID from get_link response (complete_multipart only)
+      upload_action:  "complete" or "abort" (complete_multipart only)
+      etags:          JSON string of part ETags (complete_multipart only)
+      path:           S3 path/key (register only)
+      type:           File type (register only)
+      size:           File size in bytes (register only)
+      url:            S3 URL (register only)
     """
     try:
         _require_role()
         _resolve_site(name)
 
-        parts = int(parts)
-        result = unwrap(
-            cloud_post("press.api.site.get_upload_link", {
-                "file": file,
-                "parts": parts,
-            })
-        )
-        return _ok(result)
-    except frappe.PermissionError:
-        raise
-    except frappe.ValidationError as e:
-        return _err(str(e))
-    except Exception:
-        frappe.log_error("mobile_api.get_upload_link", frappe.get_traceback())
-        return _err("Failed to get upload link.")
+        if action == "get_link":
+            parts = int(parts) if parts else 1
+            result = unwrap(
+                cloud_post("press.api.site.get_upload_link", {
+                    "file": file,
+                    "parts": parts,
+                })
+            )
+            return _ok(result)
 
+        elif action == "complete_multipart":
+            if not upload_id:
+                return _err("upload_id is required for complete_multipart.")
 
-@frappe.whitelist(methods=["POST"])
-def complete_upload(name: str, file: str, id: str, action: str = "complete", parts: str = None):
-    """
-    Complete or abort a multipart upload.
+            ua = upload_action or "complete"
+            if ua not in ("complete", "abort"):
+                return _err("upload_action must be 'complete' or 'abort'.")
 
-    Only needed when parts > 1 was used in get_upload_link.
+            parsed_etags = json.loads(etags) if etags else None
 
-    Args:
-      name:    Go1 FCloud Site doc name or Frappe Cloud site name
-      file:    Original filename
-      id:      Upload ID returned by get_upload_link
-      action:  "complete" or "abort"
-      parts:   JSON string of part ETags from S3 responses
-    """
-    try:
-        _require_role()
-        _resolve_site(name)
+            result = unwrap(
+                cloud_post("press.api.site.multipart_exit", {
+                    "file": file,
+                    "id": upload_id,
+                    "action": ua,
+                    "parts": parsed_etags,
+                })
+            )
+            return _ok(result)
 
-        if action not in ("complete", "abort"):
-            return _err("action must be 'complete' or 'abort'.")
+        elif action == "register":
+            valid_types = ("database", "public", "private", "config")
+            if type not in valid_types:
+                return _err(f"type must be one of {valid_types}.")
+            if not path or not url:
+                return _err("path and url are required for register.")
 
-        parsed_parts = json.loads(parts) if parts else None
+            result = unwrap(
+                cloud_post("press.api.site.uploaded_backup_info", {
+                    "file": file,
+                    "path": path,
+                    "type": type,
+                    "size": int(size) if size else 0,
+                    "url": url,
+                })
+            )
+            return _ok(result)
 
-        result = unwrap(
-            cloud_post("press.api.site.multipart_exit", {
-                "file": file,
-                "id": id,
-                "action": action,
-                "parts": parsed_parts,
-            })
-        )
-        return _ok(result)
+        else:
+            return _err("action must be 'get_link', 'complete_multipart', or 'register'.")
+
     except frappe.PermissionError:
         raise
     except frappe.ValidationError as e:
         return _err(str(e))
     except json.JSONDecodeError:
-        return _err("Invalid JSON in 'parts' parameter.")
+        return _err("Invalid JSON in 'etags' parameter.")
     except Exception:
-        frappe.log_error("mobile_api.complete_upload", frappe.get_traceback())
-        return _err("Failed to complete upload.")
-
-
-@frappe.whitelist(methods=["POST"])
-def register_uploaded_file(name: str, file: str, path: str, type: str, size: int, url: str):
-    """
-    Register an uploaded file as a Remote File on Frappe Cloud.
-
-    Called after the file has been uploaded to S3 via the presigned URL.
-
-    Args:
-      name:  Go1 FCloud Site doc name or Frappe Cloud site name
-      file:  Original filename
-      path:  S3 path/key from the presigned URL
-      type:  File type — one of "database", "public", "private", "config"
-      size:  File size in bytes
-      url:   S3 URL where the file was uploaded
-
-    Returns the Remote File doc name, to be passed to site_restore.
-    """
-    try:
-        _require_role()
-        _resolve_site(name)
-
-        valid_types = ("database", "public", "private", "config")
-        if type not in valid_types:
-            return _err(f"type must be one of {valid_types}.")
-
-        size = int(size)
-
-        result = unwrap(
-            cloud_post("press.api.site.uploaded_backup_info", {
-                "file": file,
-                "path": path,
-                "type": type,
-                "size": size,
-                "url": url,
-            })
-        )
-        return _ok(result)
-    except frappe.PermissionError:
-        raise
-    except frappe.ValidationError as e:
-        return _err(str(e))
-    except Exception:
-        frappe.log_error("mobile_api.register_uploaded_file", frappe.get_traceback())
-        return _err("Failed to register uploaded file.")
+        frappe.log_error("mobile_api.site_upload", frappe.get_traceback())
+        return _err("Failed to process upload request.")
 
 
 @frappe.whitelist()
