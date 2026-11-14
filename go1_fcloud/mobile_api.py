@@ -1433,6 +1433,128 @@ def _find_backup_by_url(backups, url):
     return None
 
 
+@frappe.whitelist(methods=["POST"])
+def get_upload_link(name: str, file: str, parts: int = 1):
+    """
+    Get presigned S3 URL(s) for uploading backup files.
+
+    Args:
+      name:   Go1 FCloud Site doc name or Frappe Cloud site name
+      file:   Filename to upload (e.g. "20241114_backup.sql.gz")
+      parts:  Number of parts for multipart upload (default 1)
+
+    Returns presigned URL(s) that the client uses to PUT files directly to S3.
+    """
+    try:
+        _require_role()
+        _resolve_site(name)
+
+        parts = int(parts)
+        result = unwrap(
+            cloud_post("press.api.site.get_upload_link", {
+                "file": file,
+                "parts": parts,
+            })
+        )
+        return _ok(result)
+    except frappe.PermissionError:
+        raise
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_upload_link", frappe.get_traceback())
+        return _err("Failed to get upload link.")
+
+
+@frappe.whitelist(methods=["POST"])
+def complete_upload(name: str, file: str, id: str, action: str = "complete", parts: str = None):
+    """
+    Complete or abort a multipart upload.
+
+    Only needed when parts > 1 was used in get_upload_link.
+
+    Args:
+      name:    Go1 FCloud Site doc name or Frappe Cloud site name
+      file:    Original filename
+      id:      Upload ID returned by get_upload_link
+      action:  "complete" or "abort"
+      parts:   JSON string of part ETags from S3 responses
+    """
+    try:
+        _require_role()
+        _resolve_site(name)
+
+        if action not in ("complete", "abort"):
+            return _err("action must be 'complete' or 'abort'.")
+
+        parsed_parts = json.loads(parts) if parts else None
+
+        result = unwrap(
+            cloud_post("press.api.site.multipart_exit", {
+                "file": file,
+                "id": id,
+                "action": action,
+                "parts": parsed_parts,
+            })
+        )
+        return _ok(result)
+    except frappe.PermissionError:
+        raise
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except json.JSONDecodeError:
+        return _err("Invalid JSON in 'parts' parameter.")
+    except Exception:
+        frappe.log_error("mobile_api.complete_upload", frappe.get_traceback())
+        return _err("Failed to complete upload.")
+
+
+@frappe.whitelist(methods=["POST"])
+def register_uploaded_file(name: str, file: str, path: str, type: str, size: int, url: str):
+    """
+    Register an uploaded file as a Remote File on Frappe Cloud.
+
+    Called after the file has been uploaded to S3 via the presigned URL.
+
+    Args:
+      name:  Go1 FCloud Site doc name or Frappe Cloud site name
+      file:  Original filename
+      path:  S3 path/key from the presigned URL
+      type:  File type — one of "database", "public", "private", "config"
+      size:  File size in bytes
+      url:   S3 URL where the file was uploaded
+
+    Returns the Remote File doc name, to be passed to site_restore.
+    """
+    try:
+        _require_role()
+        _resolve_site(name)
+
+        valid_types = ("database", "public", "private", "config")
+        if type not in valid_types:
+            return _err(f"type must be one of {valid_types}.")
+
+        size = int(size)
+
+        result = unwrap(
+            cloud_post("press.api.site.uploaded_backup_info", {
+                "file": file,
+                "path": path,
+                "type": type,
+                "size": size,
+                "url": url,
+            })
+        )
+        return _ok(result)
+    except frappe.PermissionError:
+        raise
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.register_uploaded_file", frappe.get_traceback())
+        return _err("Failed to register uploaded file.")
+
+
 @frappe.whitelist()
 def get_remote_site_backups(url, email, password):
     """
@@ -2578,7 +2700,7 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
                 "app_count": b.get("noof_apps") or len(app_names),
                 "apps": app_names,
                 "site_count": site_count_map.get(b.get("name"), 0),
-                "last_deploy_date": last_deploy_map.get(b.get("id"), ""),
+                "last_deploy": last_deploy_map.get(b.get("id"), ""),
             })
 
         return _ok({
