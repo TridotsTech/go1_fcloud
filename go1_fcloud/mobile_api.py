@@ -159,6 +159,84 @@ def login(usr=None, pwd=None):
         return {"message": "Login Failed", "status": "Failed"}
 
 
+# --------------------------------------------------------------------------- #
+#  Team / Account
+# --------------------------------------------------------------------------- #
+
+
+@frappe.whitelist()
+def get_teams():
+    """Return the list of teams the current user belongs to on Frappe Cloud.
+
+    Response includes the current (active) team and all switchable teams.
+    """
+    try:
+        _require_role()
+        account = unwrap(cloud_get("press.api.account.get")) or {}
+        teams = account.get("teams", [])
+        current_team = account.get("team", {})
+
+        return _ok({
+            "current_team": {
+                "name": current_team.get("name", ""),
+                "team_title": current_team.get("team_title", ""),
+                "user": current_team.get("user", ""),
+                "enabled": current_team.get("enabled", False),
+                "parent_team": current_team.get("parent_team", ""),
+            } if isinstance(current_team, dict) else {"name": str(current_team)},
+            "teams": [
+                {
+                    "name": t.get("name", "") if isinstance(t, dict) else str(t),
+                    "team_title": t.get("team_title", "") if isinstance(t, dict) else "",
+                    "user": t.get("user", "") if isinstance(t, dict) else "",
+                }
+                for t in teams
+            ],
+        })
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.get_teams", frappe.get_traceback())
+        return _err("Failed to fetch teams.")
+
+
+@frappe.whitelist()
+def switch_team(team: str):
+    """Switch the active Frappe Cloud team account.
+
+    Args:
+      team: Team name (ID) to switch to.
+
+    After switching, all subsequent Frappe Cloud API calls will operate
+    under the new team context.
+    """
+    try:
+        _require_role()
+        if not team:
+            return _err("Team name is required.")
+
+        result = unwrap(
+            cloud_post("press.api.account.switch_team", {"team": team})
+        )
+        if not result:
+            return _err(f"Could not switch to team '{team}'. You may not be a member.")
+
+        team_info = result.get("team", {}) if isinstance(result, dict) else {}
+        return _ok({
+            "team": {
+                "name": team_info.get("name", "") if isinstance(team_info, dict) else str(team_info),
+                "team_title": team_info.get("team_title", "") if isinstance(team_info, dict) else "",
+                "user": team_info.get("user", "") if isinstance(team_info, dict) else "",
+            },
+            "message": f"Switched to team '{team}'.",
+        })
+    except frappe.ValidationError as e:
+        return _err(str(e))
+    except Exception:
+        frappe.log_error("mobile_api.switch_team", frappe.get_traceback())
+        return _err("Failed to switch team.")
+
+
 def _resolve_site(name):
     """Resolve a site name (local doc name or cloud site name) to the Frappe Cloud site URL.
 
