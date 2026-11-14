@@ -2851,8 +2851,10 @@ def get_bench(name):
             }
         )
     except frappe.PermissionError:
+        frappe.clear_messages()
         return _err("No bench access.")
     except frappe.ValidationError:
+        frappe.clear_messages()
         return _err("No bench access.")
     except Exception:
         frappe.log_error("mobile_api.get_bench", frappe.get_traceback())
