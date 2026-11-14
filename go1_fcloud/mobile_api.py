@@ -2730,8 +2730,7 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
 def get_bench(name):
     """Return full bench details fetched live from Frappe Cloud."""
     try:
-        if not frappe.has_permission("Go1 FCloud Bench", "read"):
-            return _err("No bench access.")
+        _require_role()
         doc, bench_id = _resolve_bench(name)
 
         # Fetch bench info live from Frappe Cloud
@@ -2851,6 +2850,10 @@ def get_bench(name):
                 "recent_deploys": deploys,
             }
         )
+    except frappe.PermissionError:
+        return _err("No bench access.")
+    except frappe.ValidationError:
+        return _err("No bench access.")
     except Exception:
         frappe.log_error("mobile_api.get_bench", frappe.get_traceback())
         return _err(f"Failed to fetch bench: {name}")
