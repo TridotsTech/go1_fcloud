@@ -2511,6 +2511,29 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
             title = frappe.db.get_value("Go1 FCloud Server", sn, "server_name") or sn
             servers.append({"name": sn, "title": title})
 
+        # Fetch last deploy date per bench (single cloud query)
+        bench_ids = [b["id"] for b in bench_records if b.get("id")]
+        last_deploy_map = {}
+        if bench_ids:
+            try:
+                dc_builds = unwrap(
+                    cloud_post(
+                        "press.api.client.get_list",
+                        {
+                            "doctype": "Deploy Candidate Build",
+                            "filters": {"group": ("in", bench_ids)},
+                            "fields": ["group", "max(creation) as last_deploy"],
+                            "group_by": "group",
+                            "limit_page_length": len(bench_ids),
+                        },
+                    )
+                ) or []
+                last_deploy_map = {
+                    r["group"]: r["last_deploy"] for r in dc_builds if r.get("group")
+                }
+            except Exception:
+                pass
+
         # Build site count per bench (single query for all benches)
         bench_doc_names = [b["name"] for b in bench_records if b.get("name")]
         site_count_map = {}
@@ -2555,6 +2578,7 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
                 "app_count": b.get("noof_apps") or len(app_names),
                 "apps": app_names,
                 "site_count": site_count_map.get(b.get("name"), 0),
+                "last_deploy_date": last_deploy_map.get(b.get("id"), ""),
             })
 
         return _ok({
