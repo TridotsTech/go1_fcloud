@@ -4107,7 +4107,8 @@ def _fetch_server_doc(server_id, doctype="Server"):
 def get_server(name):
     """Return full details for a server fetched live from Frappe Cloud."""
     try:
-        _require_role()
+        if not frappe.has_permission("Go1 FCloud Server", "read"):
+            return _err("Not permitted to access Go1 FCloud Server.")
 
         # Support both local doc name and direct server ID
         try:
