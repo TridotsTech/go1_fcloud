@@ -2511,6 +2511,18 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
             title = frappe.db.get_value("Go1 FCloud Server", sn, "server_name") or sn
             servers.append({"name": sn, "title": title})
 
+        # Build site count per bench (single query for all benches)
+        bench_doc_names = [b["name"] for b in bench_records if b.get("name")]
+        site_count_map = {}
+        if bench_doc_names:
+            site_counts = frappe.get_all(
+                "Go1 FCloud Site",
+                filters={"bench_name": ("in", bench_doc_names), "is_dropped": 0},
+                fields=["bench_name", "count(name) as cnt"],
+                group_by="bench_name",
+            )
+            site_count_map = {r["bench_name"]: r["cnt"] for r in site_counts}
+
         # Build response
         benches = []
         for b in bench_records:
@@ -2542,6 +2554,7 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
                 "modified": b.get("modified", ""),
                 "app_count": b.get("noof_apps") or len(app_names),
                 "apps": app_names,
+                "site_count": site_count_map.get(b.get("name"), 0),
             })
 
         return _ok({
