@@ -3321,7 +3321,8 @@ def get_bench_deploy_info(name):
       name:  Go1 FCloud Bench doc name
     """
     try:
-        _require_role()
+        if not frappe.has_permission("Go1 FCloud Bench", "read"):
+            return _err("Not permitted to access Go1 FCloud Bench.")
         doc, bench_id = _resolve_bench(name)
 
         info = _fetch_deploy_information(bench_id) or {}
@@ -3353,7 +3354,32 @@ def get_bench_deploy_info(name):
                 }
             )
 
-        sites = info.get("sites", [])
+        # Fetch sites from local Go1 FCloud Site docs instead of cloud API
+        bench_doc_name = doc.name if doc else ""
+        site_filters = {"is_dropped": 0}
+        if bench_doc_name:
+            site_filters["bench_name"] = bench_doc_name
+        else:
+            site_filters["group"] = bench_id
+        site_records = frappe.get_list(
+            "Go1 FCloud Site",
+            filters=site_filters,
+            fields=["name", "site_name", "url", "status", "bench"],
+            order_by="modified desc",
+        )
+        sites = [
+            {
+                "name": s.get("url", "") or s.get("site_name", ""),
+                "site_name": s.get("url", "") or s.get("site_name", ""),
+                "title": s.get("site_name", ""),
+                "status": s.get("status", ""),
+                "server": s.get("bench", ""),
+                "bench": bench_doc_name,
+                "skip_failing_patches": False,
+                "skip_backups": False,
+            }
+            for s in site_records
+        ]
 
         return _ok(
             {
