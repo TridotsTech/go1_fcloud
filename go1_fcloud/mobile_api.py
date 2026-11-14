@@ -309,10 +309,10 @@ def _resolve_bench(name):
             "Go1 FCloud Bench", filters={"bench": name}, fields=fields, limit=1,
         )
     if rows:
-        doc = frappe.get_doc("Go1 FCloud Bench", rows[0]["name"])
+        doc = rows[0]
 
     if doc:
-        bench_id = doc.id
+        bench_id = doc.get("id")
         if bench_id:
             return doc, bench_id
         # id field is empty — the local doc was never synced with the cloud
@@ -767,18 +767,28 @@ def get_site(name):
             return _err("Not permitted to access Go1 FCloud Site.")
         cloud_name = _resolve_site(name)
 
-        # Try to load local doc for extra fields
+        # Try to load local doc for extra fields (permission-aware)
+        site_fields = [
+            "name", "site_name", "url", "status", "version",
+            "region", "bench", "bench_name", "project",
+        ]
         doc = None
-        if frappe.db.exists("Go1 FCloud Site", name):
-            doc = frappe.get_doc("Go1 FCloud Site", name)
-        else:
-            local_name = frappe.db.get_value(
-                "Go1 FCloud Site", {"url": cloud_name}, "name"
-            ) or frappe.db.get_value(
-                "Go1 FCloud Site", {"site_name": cloud_name}, "name"
+        rows = frappe.get_list(
+            "Go1 FCloud Site", filters={"name": name},
+            fields=site_fields, limit=1,
+        )
+        if not rows:
+            rows = frappe.get_list(
+                "Go1 FCloud Site", filters={"url": cloud_name},
+                fields=site_fields, limit=1,
             )
-            if local_name:
-                doc = frappe.get_doc("Go1 FCloud Site", local_name)
+        if not rows:
+            rows = frappe.get_list(
+                "Go1 FCloud Site", filters={"site_name": cloud_name},
+                fields=site_fields, limit=1,
+            )
+        if rows:
+            doc = rows[0]
 
         # Fetch live site data from Frappe Cloud
         site_data = unwrap(
@@ -881,37 +891,37 @@ def get_site(name):
 
         # Resolve bench_name and region from local doc or cloud group ID
         group = site_data.get("group", "")
-        bench_name = (doc.bench_name if doc else "") or ""
-        bench_doc = None
+        bench_name = (doc.get("bench_name") if doc else "") or ""
+        bench_row = None
         if not bench_name and group:
-            bench_doc = (
-                frappe.get_doc("Go1 FCloud Bench", {"id": group})
-                if frappe.db.exists("Go1 FCloud Bench", {"id": group})
-                else None
+            bench_rows = frappe.get_list(
+                "Go1 FCloud Bench", filters={"id": group},
+                fields=["name", "region"], limit=1,
             )
-            bench_name = bench_doc.name if bench_doc else ""
+            bench_row = bench_rows[0] if bench_rows else None
+            bench_name = bench_row.get("name", "") if bench_row else ""
 
         # Region: try site_data first, then local bench doc, then local site doc
         region = (
             site_data.get("cluster")
             or (site_data.get("region_info") or {}).get("title")
-            or (bench_doc.region if bench_doc else "")
-            or (doc.region if doc else "")
+            or (bench_row.get("region", "") if bench_row else "")
+            or (doc.get("region", "") if doc else "")
             or ""
         )
 
         return _ok(
             {
-                "name": doc.name if doc else cloud_name,
+                "name": doc.get("name", cloud_name) if doc else cloud_name,
                 "site_name": cloud_name,
-                "status": site_data.get("status", doc.status if doc else ""),
-                "version": site_data.get("frappe_version", doc.version if doc else ""),
+                "status": site_data.get("status", doc.get("status", "") if doc else ""),
+                "version": site_data.get("frappe_version", doc.get("version", "") if doc else ""),
                 "region": region,
                 "plan": plan,
                 "usage": usage,
-                "bench": group or (doc.bench if doc else ""),
+                "bench": group or (doc.get("bench", "") if doc else ""),
                 "bench_name": bench_name,
-                "project": doc.project if doc else "",
+                "project": doc.get("project", "") if doc else "",
                 "apps": apps,
                 "default_domain": default_domain,
                 "domains": domains,
@@ -2635,7 +2645,7 @@ def get_bench(name):
         ]
 
         # Fetch sites on this bench from local Go1 FCloud Site docs
-        bench_doc_name = doc.name if doc else ""
+        bench_doc_name = doc.get("name", "") if doc else ""
         local_site_filters = {"is_dropped": 0}
         if bench_doc_name:
             local_site_filters["bench_name"] = bench_doc_name
@@ -2662,9 +2672,9 @@ def get_bench(name):
         cluster_image = bench_data.get("cluster_image", "") or bench_data.get("image", "")
 
         # Server info from local doc
-        server_doc_name = doc.server if doc else ""
+        server_doc_name = doc.get("server", "") if doc else ""
         server_title = ""
-        server_id = doc.server_id if doc else ""
+        server_id = doc.get("server_id", "") if doc else ""
         if server_doc_name:
             server_title = (
                 frappe.db.get_value("Go1 FCloud Server", server_doc_name, "server_name")
@@ -2673,15 +2683,15 @@ def get_bench(name):
 
         return _ok(
             {
-                "name": doc.name if doc else "",
-                "bench": bench_data.get("title", doc.bench if doc else ""),
+                "name": doc.get("name", "") if doc else "",
+                "bench": bench_data.get("title", doc.get("bench", "") if doc else ""),
                 "bench_id": bench_id,
                 "status": bench_data.get("status", ""),
                 "version": bench_data.get("version", ""),
                 "region": region,
                 "region_image": cluster_image,
                 "creation": bench_data.get("creation", ""),
-                "project": doc.project if doc else "",
+                "project": doc.get("project", "") if doc else "",
                 "server": server_doc_name,
                 "server_title": server_title,
                 "server_id": server_id,
@@ -3374,7 +3384,7 @@ def get_bench_deploy_info(name):
             )
 
         # Fetch sites from local Go1 FCloud Site docs instead of cloud API
-        bench_doc_name = doc.name if doc else ""
+        bench_doc_name = doc.get("name", "") if doc else ""
         site_filters = {"is_dropped": 0}
         if bench_doc_name:
             site_filters["bench_name"] = bench_doc_name
