@@ -745,7 +745,8 @@ def get_site(name):
       name: Go1 FCloud Site doc name or Frappe Cloud site name
     """
     try:
-        _require_role()
+        if not frappe.has_permission("Go1 FCloud Site", "read"):
+            return _err("Not permitted to access Go1 FCloud Site.")
         cloud_name = _resolve_site(name)
 
         # Try to load local doc for extra fields
