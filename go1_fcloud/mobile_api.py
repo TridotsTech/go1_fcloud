@@ -243,20 +243,32 @@ def _resolve_site(name):
     Accepts:
       - Local Go1 FCloud Site doc name
       - Frappe Cloud site name (e.g. "mysite.frappe.cloud")
+
+    Uses frappe.get_list for permission-aware lookups.
     """
-    if frappe.db.exists("Go1 FCloud Site", name):
-        doc = frappe.get_doc("Go1 FCloud Site", name)
-        return doc.url or doc.site_name
+    fields = ["name", "url", "site_name"]
+
+    # Try by doc name
+    rows = frappe.get_list(
+        "Go1 FCloud Site", filters={"name": name}, fields=fields, limit=1,
+    )
+    if rows:
+        return rows[0].get("url") or rows[0].get("site_name")
+
     # Try by cloud URL
-    local_name = frappe.db.get_value("Go1 FCloud Site", {"url": name}, "name")
-    if local_name:
-        doc = frappe.get_doc("Go1 FCloud Site", local_name)
-        return doc.url or doc.site_name
+    rows = frappe.get_list(
+        "Go1 FCloud Site", filters={"url": name}, fields=fields, limit=1,
+    )
+    if rows:
+        return rows[0].get("url") or rows[0].get("site_name")
+
     # Try by site_name field
-    local_name = frappe.db.get_value("Go1 FCloud Site", {"site_name": name}, "name")
-    if local_name:
-        doc = frappe.get_doc("Go1 FCloud Site", local_name)
-        return doc.url or doc.site_name
+    rows = frappe.get_list(
+        "Go1 FCloud Site", filters={"site_name": name}, fields=fields, limit=1,
+    )
+    if rows:
+        return rows[0].get("url") or rows[0].get("site_name")
+
     # Not found locally — use the name directly as cloud site name
     return name
 
@@ -276,22 +288,28 @@ def _resolve_bench(name):
 
     Raises:
       frappe.ValidationError if the bench cannot be resolved to a cloud ID.
+
+    Uses frappe.get_list for permission-aware lookups.
     """
     doc = None
+    fields = ["name", "id", "bench", "server", "server_id", "project", "is_dropped"]
 
     # Try local doc name first
-    if frappe.db.exists("Go1 FCloud Bench", name):
-        doc = frappe.get_doc("Go1 FCloud Bench", name)
-    else:
+    rows = frappe.get_list(
+        "Go1 FCloud Bench", filters={"name": name}, fields=fields, limit=1,
+    )
+    if not rows:
         # Try by cloud bench ID stored in the id field
-        local_name = frappe.db.get_value("Go1 FCloud Bench", {"id": name}, "name")
-        if local_name:
-            doc = frappe.get_doc("Go1 FCloud Bench", local_name)
-        else:
-            # Try by bench title
-            local_name = frappe.db.get_value("Go1 FCloud Bench", {"bench": name}, "name")
-            if local_name:
-                doc = frappe.get_doc("Go1 FCloud Bench", local_name)
+        rows = frappe.get_list(
+            "Go1 FCloud Bench", filters={"id": name}, fields=fields, limit=1,
+        )
+    if not rows:
+        # Try by bench title
+        rows = frappe.get_list(
+            "Go1 FCloud Bench", filters={"bench": name}, fields=fields, limit=1,
+        )
+    if rows:
+        doc = frappe.get_doc("Go1 FCloud Bench", rows[0]["name"])
 
     if doc:
         bench_id = doc.id
