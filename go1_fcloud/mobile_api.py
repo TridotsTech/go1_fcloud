@@ -2552,7 +2552,8 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
 def get_bench(name):
     """Return full bench details fetched live from Frappe Cloud."""
     try:
-        _require_role()
+        if not frappe.has_permission("Go1 FCloud Bench", "read"):
+            return _err("Not permitted to access Go1 FCloud Bench.")
         doc, bench_id = _resolve_bench(name)
 
         # Fetch bench info live from Frappe Cloud
@@ -2614,16 +2615,27 @@ def get_bench(name):
             for v in versions[:5]
         ]
 
-        # Fetch sites on this bench
-        all_sites = unwrap(cloud_post("press.api.site.all")) or []
+        # Fetch sites on this bench from local Go1 FCloud Site docs
+        bench_doc_name = doc.name if doc else ""
+        local_site_filters = {"is_dropped": 0}
+        if bench_doc_name:
+            local_site_filters["bench_name"] = bench_doc_name
+        else:
+            local_site_filters["group"] = bench_id
+        site_records = frappe.get_list(
+            "Go1 FCloud Site",
+            filters=local_site_filters,
+            fields=["name", "site_name", "url", "status"],
+            order_by="modified desc",
+        )
         bench_sites = [
             {
-                "site_name": s.get("name", ""),
-                "title": s.get("title", ""),
+                "name": s.get("name", ""),
+                "site_name": s.get("url", "") or s.get("site_name", ""),
+                "title": s.get("site_name", ""),
                 "status": s.get("status", ""),
             }
-            for s in all_sites
-            if s.get("group") == bench_id
+            for s in site_records
         ]
 
         # Region info
