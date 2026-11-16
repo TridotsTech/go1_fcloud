@@ -763,7 +763,8 @@ def get_site(name):
       name: Go1 FCloud Site doc name or Frappe Cloud site name
     """
     try:
-        _require_role()
+        if not frappe.has_permission("Go1 FCloud Site", "read"):
+            frappe.throw("No site access.", frappe.PermissionError)
         cloud_name = _resolve_site(name)
 
         # Try to load local doc for extra fields (permission-aware)
@@ -2733,7 +2734,8 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
 def get_bench(name):
     """Return full bench details fetched live from Frappe Cloud."""
     try:
-        _require_role()
+        if not frappe.has_permission("Go1 FCloud Bench", "read"):
+            frappe.throw("No bench access.", frappe.PermissionError)
         doc, bench_id = _resolve_bench(name)
 
         # Fetch bench info live from Frappe Cloud
