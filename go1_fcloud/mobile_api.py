@@ -2749,6 +2749,20 @@ def get_bench(name):
                 "Go1 FCloud Bench", filters={"bench": name},
                 fields=bench_fields, limit=1,
             )
+
+        # Fallback: check document sharing (get_list may miss shared docs)
+        if not rows:
+            doc_name = (
+                frappe.db.get_value("Go1 FCloud Bench", {"name": name}, "name")
+                or frappe.db.get_value("Go1 FCloud Bench", {"id": name}, "name")
+                or frappe.db.get_value("Go1 FCloud Bench", {"bench": name}, "name")
+            )
+            if doc_name and frappe.has_permission("Go1 FCloud Bench", "read", doc=doc_name):
+                rows = frappe.get_all(
+                    "Go1 FCloud Bench", filters={"name": doc_name},
+                    fields=bench_fields, limit=1,
+                )
+
         if not rows:
             frappe.throw("No bench access.", frappe.PermissionError)
 
