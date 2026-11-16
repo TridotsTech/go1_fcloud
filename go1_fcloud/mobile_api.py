@@ -763,11 +763,7 @@ def get_site(name):
       name: Go1 FCloud Site doc name or Frappe Cloud site name
     """
     try:
-        if not frappe.has_permission("Go1 FCloud Site", "read"):
-            frappe.throw("No site access.", frappe.PermissionError)
-        cloud_name = _resolve_site(name)
-
-        # Try to load local doc for extra fields (permission-aware)
+        # Permission-aware lookup — get_list respects Role Permission Manager
         site_fields = [
             "name", "site_name", "url", "status", "version",
             "region", "bench", "bench_name", "project",
@@ -779,16 +775,19 @@ def get_site(name):
         )
         if not rows:
             rows = frappe.get_list(
-                "Go1 FCloud Site", filters={"url": cloud_name},
+                "Go1 FCloud Site", filters={"url": name},
                 fields=site_fields, limit=1,
             )
         if not rows:
             rows = frappe.get_list(
-                "Go1 FCloud Site", filters={"site_name": cloud_name},
+                "Go1 FCloud Site", filters={"site_name": name},
                 fields=site_fields, limit=1,
             )
-        if rows:
-            doc = rows[0]
+        if not rows:
+            frappe.throw("No site access.", frappe.PermissionError)
+
+        doc = rows[0]
+        cloud_name = doc.get("url") or doc.get("site_name")
 
         # Fetch live site data from Frappe Cloud
         site_data = unwrap(
