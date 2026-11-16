@@ -770,14 +770,17 @@ def sync_site():
         local_sites = frappe.get_all(
             "Go1 FCloud Site",
             filters={"is_dropped": 0},
-            fields=["url", "name"],
+            fields=["url", "name", "status"],
         )
         cloud_urls = {s.get("name", "") for s in cloud_sites}
         cloud_urls.discard("")
 
         for local in local_sites:
             local_url = local.get("url")
-            if local_url and local_url not in cloud_urls:
+            local_status = local.get("status", "")
+            # Skip Archived sites — they won't appear in press.api.site.all
+            # but should not be marked as dropped
+            if local_url and local_url not in cloud_urls and local_status != "Archived":
                 try:
                     frappe.db.set_value(
                         "Go1 FCloud Site", local["name"],
