@@ -2733,9 +2733,29 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
 def get_bench(name):
     """Return full bench details fetched live from Frappe Cloud."""
     try:
-        if not frappe.has_permission("Go1 FCloud Bench", "read"):
+        # Permission-aware lookup — get_list respects Role Permission Manager
+        bench_fields = ["name", "id", "bench", "server", "server_id", "project", "is_dropped"]
+        rows = frappe.get_list(
+            "Go1 FCloud Bench", filters={"name": name},
+            fields=bench_fields, limit=1,
+        )
+        if not rows:
+            rows = frappe.get_list(
+                "Go1 FCloud Bench", filters={"id": name},
+                fields=bench_fields, limit=1,
+            )
+        if not rows:
+            rows = frappe.get_list(
+                "Go1 FCloud Bench", filters={"bench": name},
+                fields=bench_fields, limit=1,
+            )
+        if not rows:
             frappe.throw("No bench access.", frappe.PermissionError)
-        doc, bench_id = _resolve_bench(name)
+
+        doc = rows[0]
+        bench_id = doc.get("id")
+        if not bench_id:
+            frappe.throw("No bench access.", frappe.PermissionError)
 
         # Fetch bench info live from Frappe Cloud
         bench_data = (
