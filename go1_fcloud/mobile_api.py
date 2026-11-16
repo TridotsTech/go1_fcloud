@@ -763,8 +763,7 @@ def get_site(name):
       name: Go1 FCloud Site doc name or Frappe Cloud site name
     """
     try:
-        if not frappe.has_permission("Go1 FCloud Site", "read"):
-            return _err("No site access.")
+        _require_role()
         cloud_name = _resolve_site(name)
 
         # Try to load local doc for extra fields (permission-aware)
@@ -929,8 +928,12 @@ def get_site(name):
                 "creation": site_data.get("creation", ""),
             }
         )
-    except frappe.ValidationError as e:
-        return _err(str(e))
+    except frappe.PermissionError:
+        frappe.clear_messages()
+        return _err("No site access.")
+    except frappe.ValidationError:
+        frappe.clear_messages()
+        return _err("No site access.")
     except Exception:
         frappe.log_error("mobile_api.get_site", frappe.get_traceback())
         return _err(f"Failed to fetch site: {name}")
