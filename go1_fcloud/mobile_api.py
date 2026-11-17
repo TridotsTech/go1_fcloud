@@ -4531,12 +4531,21 @@ def get_site_analytics(
       end:      ISO-8601 datetime string (default: now)
       timezone: IANA timezone string  (default: system timezone)
 
-    Uses two data sources:
-      1. press.api.site.current_plan  — always works with token auth;
-         returns current CPU / database / storage usage and plan limits.
-      2. press.api.analytics.*        — time-series charts (requests,
-         background jobs, uptime). These require FC-side permissions
-         and may return empty when the API token lacks access.
+    Response keys:
+      analytics — main summary from press.api.analytics.get:
+        usage_counter, request_count, request_cpu_time, uptime
+        (each a list of {value, date}), plus plan_limit and timegrain
+      request_count_by_path  — {datasets, labels, allow_drill_down}
+      request_duration_by_path
+      avg_request_duration_by_path
+      request_count_by_ip
+      job_count_by_method
+      job_duration_by_method
+      avg_job_duration_by_method
+      background_job_usage — {job_count, job_cpu_time} (each list of {value, date})
+      slow_logs_by_count   — slow queries aggregated by count
+      slow_logs_by_duration
+      usage — current snapshot from press.api.site.current_plan
     """
     _require_role()
     cloud_name = _resolve_site(name)
@@ -4553,11 +4562,9 @@ def get_site_analytics(
         start = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     # ── Direct HTTP helper ───────────────────────────────────────────────
-    # Every call goes through direct requests.post instead of cloud_post
-    # so that 403 / other errors never call frappe.throw() and never
-    # pollute _server_messages.
+    # Uses requests.post directly instead of cloud_post so that 403 errors
+    # never call frappe.throw() and never pollute _server_messages.
     headers = get_headers()
-    _empty = {"datasets": [], "labels": []}
 
     def _fetch(endpoint, params):
         """POST to a Frappe Cloud endpoint; return parsed message or None."""
@@ -4609,33 +4616,71 @@ def get_site_analytics(
     }
 
     # ── 2. Time-series analytics ─────────────────────────────────────────
-    chart_params = {"name": cloud_name, "timezone": tz, "start": start, "end": end}
+    _empty_chart = {"datasets": [], "labels": []}
+    _empty_summary = {
+        "usage_counter": [], "request_count": [], "request_cpu_time": [],
+        "uptime": [], "plan_limit": 0, "timegrain": 0,
+    }
+    _empty_jobs = {"job_count": [], "job_cpu_time": []}
 
-    analytics = _fetch("press.api.analytics.get", chart_params) or _empty
+    bp = {"name": cloud_name, "timezone": tz, "start": start, "end": end}
+
+    # Main summary: usage_counter, request_count, request_cpu_time, uptime,
+    # plan_limit, timegrain
+    analytics = _fetch("press.api.analytics.get", bp) or _empty_summary
+
+    # Stacked charts: {datasets: [{path, values, stack}], labels: [...]}
     request_count_by_path = _fetch(
-        "press.api.analytics.get_request_count_by_path", chart_params
-    ) or _empty
+        "press.api.analytics.get_request_count_by_path", bp,
+    ) or _empty_chart
     request_duration_by_path = _fetch(
-        "press.api.analytics.get_request_duration_by_path", chart_params
-    ) or _empty
+        "press.api.analytics.get_request_duration_by_path", bp,
+    ) or _empty_chart
+    avg_request_duration_by_path = _fetch(
+        "press.api.analytics.get_average_request_duration_by_path", bp,
+    ) or _empty_chart
+    request_count_by_ip = _fetch(
+        "press.api.analytics.get_request_count_by_ip", bp,
+    ) or _empty_chart
     job_count_by_method = _fetch(
-        "press.api.analytics.get_background_job_count_by_method", chart_params
-    ) or _empty
+        "press.api.analytics.get_background_job_count_by_method", bp,
+    ) or _empty_chart
     job_duration_by_method = _fetch(
-        "press.api.analytics.get_background_job_duration_by_method", chart_params
-    ) or _empty
+        "press.api.analytics.get_background_job_duration_by_method", bp,
+    ) or _empty_chart
+    avg_job_duration_by_method = _fetch(
+        "press.api.analytics.get_average_background_job_duration_by_method", bp,
+    ) or _empty_chart
+
+    # Background job usage: {job_count: [{value, date}], job_cpu_time: [...]}
     background_job_usage = _fetch(
-        "press.api.analytics.get_background_job_usage", chart_params
-    ) or _empty
+        "press.api.analytics.get_background_job_usage", bp,
+    ) or _empty_jobs
+
+    # Slow query logs (count + duration aggregations)
+    slow_params = {**bp, "agg_type": "count", "normalize": True}
+    slow_logs_by_count = _fetch(
+        "press.api.analytics.get_slow_logs_by_query", slow_params,
+    ) or _empty_chart
+
+    slow_params_dur = {**bp, "agg_type": "duration", "normalize": True}
+    slow_logs_by_duration = _fetch(
+        "press.api.analytics.get_slow_logs_by_query", slow_params_dur,
+    ) or _empty_chart
 
     return _ok({
         "usage": usage,
         "analytics": analytics,
         "request_count_by_path": request_count_by_path,
         "request_duration_by_path": request_duration_by_path,
+        "avg_request_duration_by_path": avg_request_duration_by_path,
+        "request_count_by_ip": request_count_by_ip,
         "job_count_by_method": job_count_by_method,
         "job_duration_by_method": job_duration_by_method,
+        "avg_job_duration_by_method": avg_job_duration_by_method,
         "background_job_usage": background_job_usage,
+        "slow_logs_by_count": slow_logs_by_count,
+        "slow_logs_by_duration": slow_logs_by_duration,
         "filters": {"start": start, "end": end, "timezone": tz},
     })
 
