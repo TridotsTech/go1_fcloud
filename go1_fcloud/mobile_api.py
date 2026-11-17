@@ -4532,11 +4532,15 @@ def get_site_analytics(
       end:      ISO-8601 datetime string (default: now)
       timezone: IANA timezone string  (default: system timezone)
 
-    Returns the following sections in ``data``:
-      uptime, requests, slow_requests, background_jobs,
-      background_job_usage, request_count_by_path,
-      request_duration_by_path, job_count_by_method,
-      job_duration_by_method, usage_counter, plan_limit
+    The main ``analytics`` key (from press.api.analytics.get) contains:
+      request_count, request_cpu_time, uptime, usage_counter, plan_limit,
+      timegrain.
+
+    The breakdown keys provide per-path / per-method detail:
+      request_count_by_path, request_duration_by_path,
+      avg_request_duration_by_path, job_count_by_method,
+      job_duration_by_method, avg_job_duration_by_method,
+      background_job_usage.
     """
     _require_role()
     cloud_name = _resolve_site(name)
@@ -4554,39 +4558,56 @@ def get_site_analytics(
 
     base_params = {"name": cloud_name, "timezone": tz, "start": start, "end": end}
 
-    # ── helpers ──────────────────────────────────────────────────────────
+    # ── helper ───────────────────────────────────────────────────────────
     _empty_chart = {"datasets": [], "labels": []}
 
     def _fetch(endpoint, extra_params=None):
-        """Call a press.api.analytics endpoint; return safe default on error."""
+        """Call a press.api.analytics endpoint; log errors instead of hiding them."""
         try:
             params = {**base_params, **(extra_params or {})}
             return unwrap(cloud_post(endpoint, params)) or _empty_chart
         except Exception:
+            frappe.log_error(
+                f"get_site_analytics:{endpoint}",
+                frappe.get_traceback(),
+            )
             return _empty_chart
 
-    # ── fetch all sections ───────────────────────────────────────────────
-    # Main summary (uptime, request totals, plan limits)
-    summary = _fetch("press.api.analytics.get")
+    # ── Main analytics summary ───────────────────────────────────────────
+    # Returns request_count, request_cpu_time, uptime, usage_counter,
+    # plan_limit, timegrain — the same payload the FC dashboard charts use.
+    analytics = _fetch("press.api.analytics.get")
 
-    # Time-series charts
-    req_by_path = _fetch("press.api.analytics.get_request_count_by_path")
-    req_dur     = _fetch("press.api.analytics.get_request_duration_by_path")
-    job_count   = _fetch("press.api.analytics.get_background_job_count_by_method")
-    job_dur     = _fetch("press.api.analytics.get_background_job_duration_by_method")
-    job_usage   = _fetch("press.api.analytics.get_background_job_usage")
-
-    # Build response ─────────────────────────────────────────────────────
-    result = {
-        "summary": summary,
-        "request_count_by_path": req_by_path,
-        "request_duration_by_path": req_dur,
-        "job_count_by_method": job_count,
-        "job_duration_by_method": job_dur,
-        "background_job_usage": job_usage,
-        "filters": {"start": start, "end": end, "timezone": tz},
+    # ── Detailed breakdowns (stacked charts / tables) ────────────────────
+    breakdowns = {
+        "request_count_by_path": _fetch(
+            "press.api.analytics.get_request_count_by_path"
+        ),
+        "request_duration_by_path": _fetch(
+            "press.api.analytics.get_request_duration_by_path"
+        ),
+        "avg_request_duration_by_path": _fetch(
+            "press.api.analytics.get_average_request_duration_by_path"
+        ),
+        "job_count_by_method": _fetch(
+            "press.api.analytics.get_background_job_count_by_method"
+        ),
+        "job_duration_by_method": _fetch(
+            "press.api.analytics.get_background_job_duration_by_method"
+        ),
+        "avg_job_duration_by_method": _fetch(
+            "press.api.analytics.get_average_background_job_duration_by_method"
+        ),
+        "background_job_usage": _fetch(
+            "press.api.analytics.get_background_job_usage"
+        ),
     }
-    return _ok(result)
+
+    return _ok({
+        "analytics": analytics,
+        **breakdowns,
+        "filters": {"start": start, "end": end, "timezone": tz},
+    })
 
 
 @frappe.whitelist()
