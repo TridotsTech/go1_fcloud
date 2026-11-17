@@ -4568,7 +4568,8 @@ def get_site_analytics(
       avg_job_duration_by_method
       background_job_usage — {job_count, job_cpu_time} (each list of {value, date})
       slow_logs_by_count   — slow queries aggregated by count
-      slow_logs_by_duration
+      slow_logs_by_duration — slow queries aggregated by duration
+      slow_logs_by_avg_duration — slow queries aggregated by average duration
       usage — current snapshot from press.api.site.current_plan
     """
     _require_role()
@@ -4685,16 +4686,24 @@ def get_site_analytics(
         "press.api.analytics.get_background_job_usage", bp,
     ) or _empty_jobs
 
-    # Slow query logs (count + duration aggregations)
-    slow_params = {**bp, "agg_type": "count", "normalize": True}
-    slow_logs_by_count = _fetch(
-        "press.api.analytics.get_slow_logs_by_query", slow_params,
-    ) or _empty_chart
+    # Slow query logs (count, duration, average_duration)
+    _empty_slow = {"datasets": [], "labels": [], "allow_drill_down": False}
+    slow_base = {**bp, "normalize": False, "max_no_of_paths": 25}
 
-    slow_params_dur = {**bp, "agg_type": "duration", "normalize": True}
+    slow_logs_by_count = _fetch(
+        "press.api.analytics.get_slow_logs_by_query",
+        {**slow_base, "agg_type": "count"},
+    ) or _empty_slow
+
     slow_logs_by_duration = _fetch(
-        "press.api.analytics.get_slow_logs_by_query", slow_params_dur,
-    ) or _empty_chart
+        "press.api.analytics.get_slow_logs_by_query",
+        {**slow_base, "agg_type": "duration"},
+    ) or _empty_slow
+
+    slow_logs_by_avg_duration = _fetch(
+        "press.api.analytics.get_slow_logs_by_query",
+        {**slow_base, "agg_type": "average_duration"},
+    ) or _empty_slow
 
     return _ok({
         "usage": usage,
@@ -4709,6 +4718,7 @@ def get_site_analytics(
         "background_job_usage": background_job_usage,
         "slow_logs_by_count": slow_logs_by_count,
         "slow_logs_by_duration": slow_logs_by_duration,
+        "slow_logs_by_avg_duration": slow_logs_by_avg_duration,
         "filters": {
             "start": start, "end": end, "timezone": tz,
             "cloud_name": cloud_name,
