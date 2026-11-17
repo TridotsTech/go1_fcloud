@@ -4552,9 +4552,42 @@ def get_site_analytics(
     if not start:
         start = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    # ── 1. Current usage snapshot (always works) ─────────────────────────
-    plan_info = unwrap(
-        cloud_post("press.api.site.current_plan", {"name": cloud_name})
+    # ── Direct HTTP helper ───────────────────────────────────────────────
+    # Every call goes through direct requests.post instead of cloud_post
+    # so that 403 / other errors never call frappe.throw() and never
+    # pollute _server_messages.
+    headers = get_headers()
+    _empty = {"datasets": [], "labels": []}
+
+    def _fetch(endpoint, params):
+        """POST to a Frappe Cloud endpoint; return parsed message or None."""
+        try:
+            url = f"{FCLOUD_BASE_URL}/api/method/{endpoint}"
+            resp = requests.post(url, headers=headers, json=params, timeout=30)
+            if resp.status_code != 200:
+                frappe.log_error(
+                    f"get_site_analytics:{endpoint}",
+                    f"HTTP {resp.status_code}: {resp.text[:500]}",
+                )
+                return None
+            data = resp.json()
+            if data.get("exc") or data.get("exception"):
+                frappe.log_error(
+                    f"get_site_analytics:{endpoint}",
+                    data.get("exception") or data.get("exc", ""),
+                )
+                return None
+            return data.get("message")
+        except Exception:
+            frappe.log_error(
+                f"get_site_analytics:{endpoint}",
+                frappe.get_traceback(),
+            )
+            return None
+
+    # ── 1. Current usage snapshot ────────────────────────────────────────
+    plan_info = _fetch(
+        "press.api.site.current_plan", {"name": cloud_name}
     ) or {}
     current_plan = plan_info.get("current_plan") or {}
 
@@ -4575,31 +4608,25 @@ def get_site_analytics(
         },
     }
 
-    # ── 2. Time-series analytics (may fail if token lacks access) ────────
-    # Use direct HTTP to avoid frappe.throw() polluting _server_messages.
-    _empty_chart = {"datasets": [], "labels": []}
-    base_params = {"name": cloud_name, "timezone": tz, "start": start, "end": end}
-    headers = get_headers()
+    # ── 2. Time-series analytics ─────────────────────────────────────────
+    chart_params = {"name": cloud_name, "timezone": tz, "start": start, "end": end}
 
-    def _fetch(endpoint, extra_params=None):
-        """Call a press.api.analytics endpoint via direct HTTP."""
-        try:
-            params = {**base_params, **(extra_params or {})}
-            url = f"{FCLOUD_BASE_URL}/api/method/{endpoint}"
-            resp = requests.post(url, headers=headers, json=params, timeout=30)
-            if resp.status_code != 200:
-                return _empty_chart
-            data = resp.json()
-            return data.get("message") or _empty_chart
-        except Exception:
-            return _empty_chart
-
-    analytics = _fetch("press.api.analytics.get")
-    request_count_by_path = _fetch("press.api.analytics.get_request_count_by_path")
-    request_duration_by_path = _fetch("press.api.analytics.get_request_duration_by_path")
-    job_count_by_method = _fetch("press.api.analytics.get_background_job_count_by_method")
-    job_duration_by_method = _fetch("press.api.analytics.get_background_job_duration_by_method")
-    background_job_usage = _fetch("press.api.analytics.get_background_job_usage")
+    analytics = _fetch("press.api.analytics.get", chart_params) or _empty
+    request_count_by_path = _fetch(
+        "press.api.analytics.get_request_count_by_path", chart_params
+    ) or _empty
+    request_duration_by_path = _fetch(
+        "press.api.analytics.get_request_duration_by_path", chart_params
+    ) or _empty
+    job_count_by_method = _fetch(
+        "press.api.analytics.get_background_job_count_by_method", chart_params
+    ) or _empty
+    job_duration_by_method = _fetch(
+        "press.api.analytics.get_background_job_duration_by_method", chart_params
+    ) or _empty
+    background_job_usage = _fetch(
+        "press.api.analytics.get_background_job_usage", chart_params
+    ) or _empty
 
     return _ok({
         "usage": usage,
