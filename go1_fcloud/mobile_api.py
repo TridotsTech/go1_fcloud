@@ -4565,6 +4565,7 @@ def get_site_analytics(
     # Uses requests.post directly instead of cloud_post so that 403 errors
     # never call frappe.throw() and never pollute _server_messages.
     headers = get_headers()
+    _errors = []
 
     def _fetch(endpoint, params):
         """POST to a Frappe Cloud endpoint; return parsed message or None."""
@@ -4572,6 +4573,7 @@ def get_site_analytics(
             url = f"{FCLOUD_BASE_URL}/api/method/{endpoint}"
             resp = requests.post(url, headers=headers, json=params, timeout=30)
             if resp.status_code != 200:
+                _errors.append(f"{endpoint}: HTTP {resp.status_code}")
                 frappe.log_error(
                     f"get_site_analytics:{endpoint}",
                     f"HTTP {resp.status_code}: {resp.text[:500]}",
@@ -4579,13 +4581,15 @@ def get_site_analytics(
                 return None
             data = resp.json()
             if data.get("exc") or data.get("exception"):
+                _errors.append(f"{endpoint}: {data.get('exc_type', 'error')}")
                 frappe.log_error(
                     f"get_site_analytics:{endpoint}",
                     data.get("exception") or data.get("exc", ""),
                 )
                 return None
             return data.get("message")
-        except Exception:
+        except Exception as e:
+            _errors.append(f"{endpoint}: {str(e)[:100]}")
             frappe.log_error(
                 f"get_site_analytics:{endpoint}",
                 frappe.get_traceback(),
@@ -4681,7 +4685,11 @@ def get_site_analytics(
         "background_job_usage": background_job_usage,
         "slow_logs_by_count": slow_logs_by_count,
         "slow_logs_by_duration": slow_logs_by_duration,
-        "filters": {"start": start, "end": end, "timezone": tz},
+        "filters": {
+            "start": start, "end": end, "timezone": tz,
+            "cloud_name": cloud_name,
+        },
+        "errors": _errors,
     })
 
 
