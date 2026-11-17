@@ -245,30 +245,54 @@ def _resolve_site(name):
       - Local Go1 FCloud Site doc name
       - Frappe Cloud site name (e.g. "mysite.frappe.cloud")
 
-    Uses frappe.get_list for permission-aware lookups.
+    Uses frappe.get_list for permission-aware lookups, then falls back to
+    frappe.db.get_value when get_list returns nothing (e.g. User Permissions
+    filtering the doc).  _require_role() must be called before this function.
     """
     fields = ["name", "url", "site_name"]
+
+    def _pick(row):
+        """Return the best cloud name from a doc row, or None."""
+        return row.get("url") or row.get("site_name") or None
 
     # Try by doc name
     rows = frappe.get_list(
         "Go1 FCloud Site", filters={"name": name}, fields=fields, limit=1,
     )
     if rows:
-        return rows[0].get("url") or rows[0].get("site_name")
+        val = _pick(rows[0])
+        if val:
+            return val
 
     # Try by cloud URL
     rows = frappe.get_list(
         "Go1 FCloud Site", filters={"url": name}, fields=fields, limit=1,
     )
     if rows:
-        return rows[0].get("url") or rows[0].get("site_name")
+        val = _pick(rows[0])
+        if val:
+            return val
 
     # Try by site_name field
     rows = frappe.get_list(
         "Go1 FCloud Site", filters={"site_name": name}, fields=fields, limit=1,
     )
     if rows:
-        return rows[0].get("url") or rows[0].get("site_name")
+        val = _pick(rows[0])
+        if val:
+            return val
+
+    # Fallback: get_list may have been filtered by User Permissions.
+    # Use get_value (skips permissions — safe because _require_role()
+    # already verified the caller's role).
+    for filter_field in ("name", "url", "site_name"):
+        val = frappe.db.get_value(
+            "Go1 FCloud Site", {filter_field: name}, ["url", "site_name"], as_dict=True,
+        )
+        if val:
+            cloud_name = val.get("url") or val.get("site_name")
+            if cloud_name:
+                return cloud_name
 
     # Not found locally — use the name directly as cloud site name
     return name
