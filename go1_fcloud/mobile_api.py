@@ -4539,7 +4539,7 @@ def get_server_analytics(name, duration="24h", timezone=None):
     return _ok(metrics)
 
 
-@frappe.whitelist(methods=["GET"])
+@frappe.whitelist(methods=["GET", "POST"])
 def get_site_analytics(
     name: str,
     start: str = None,
