@@ -4525,23 +4525,18 @@ def get_site_analytics(
     """
     Return site insights / analytics for a date range.
 
-    Mirrors the Frappe Cloud dashboard Insights → Analytics tab.
-
     Args:
       name:     Go1 FCloud Site doc name or Frappe Cloud site name
       start:    ISO-8601 datetime string (default: 7 days ago)
       end:      ISO-8601 datetime string (default: now)
       timezone: IANA timezone string  (default: system timezone)
 
-    The main ``analytics`` key (from press.api.analytics.get) contains:
-      request_count, request_cpu_time, uptime, usage_counter, plan_limit,
-      timegrain.
-
-    The breakdown keys provide per-path / per-method detail:
-      request_count_by_path, request_duration_by_path,
-      avg_request_duration_by_path, job_count_by_method,
-      job_duration_by_method, avg_job_duration_by_method,
-      background_job_usage.
+    Uses two data sources:
+      1. press.api.site.current_plan  — always works with token auth;
+         returns current CPU / database / storage usage and plan limits.
+      2. press.api.analytics.*        — time-series charts (requests,
+         background jobs, uptime). These require FC-side permissions
+         and may return empty when the API token lacks access.
     """
     _require_role()
     cloud_name = _resolve_site(name)
@@ -4557,14 +4552,33 @@ def get_site_analytics(
     if not start:
         start = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    base_params = {"name": cloud_name, "timezone": tz, "start": start, "end": end}
+    # ── 1. Current usage snapshot (always works) ─────────────────────────
+    plan_info = unwrap(
+        cloud_post("press.api.site.current_plan", {"name": cloud_name})
+    ) or {}
+    current_plan = plan_info.get("current_plan") or {}
 
-    # ── helper ───────────────────────────────────────────────────────────
-    # Use direct HTTP requests instead of cloud_post so that permission
-    # errors from the analytics endpoints do not call frappe.throw() and
-    # accumulate in _server_messages (the same pattern used by
-    # _fetch_deploy_information).
+    usage = {
+        "total_cpu_usage_hours": plan_info.get("total_cpu_usage_hours", 0),
+        "hours_until_reset": plan_info.get("hours_until_reset", 0),
+        "total_database_usage": plan_info.get("total_database_usage", 0),
+        "max_database_usage": plan_info.get("max_database_usage", 0),
+        "total_storage_usage": plan_info.get("total_storage_usage", 0),
+        "max_storage_usage": plan_info.get("max_storage_usage", 0),
+        "usage_in_percent": plan_info.get("usage_in_percent") or {},
+        "plan": {
+            "name": current_plan.get("name", ""),
+            "plan_title": current_plan.get("plan_title", ""),
+            "cpu_time_per_day": current_plan.get("cpu_time_per_day", 0),
+            "monitor_access": plan_info.get("monitor_access", False),
+            "database_access": plan_info.get("database_access", False),
+        },
+    }
+
+    # ── 2. Time-series analytics (may fail if token lacks access) ────────
+    # Use direct HTTP to avoid frappe.throw() polluting _server_messages.
     _empty_chart = {"datasets": [], "labels": []}
+    base_params = {"name": cloud_name, "timezone": tz, "start": start, "end": end}
     headers = get_headers()
 
     def _fetch(endpoint, extra_params=None):
@@ -4574,53 +4588,27 @@ def get_site_analytics(
             url = f"{FCLOUD_BASE_URL}/api/method/{endpoint}"
             resp = requests.post(url, headers=headers, json=params, timeout=30)
             if resp.status_code != 200:
-                frappe.log_error(
-                    f"get_site_analytics:{endpoint}",
-                    f"HTTP {resp.status_code}: {resp.text[:500]}",
-                )
                 return _empty_chart
             data = resp.json()
             return data.get("message") or _empty_chart
         except Exception:
-            frappe.log_error(
-                f"get_site_analytics:{endpoint}",
-                frappe.get_traceback(),
-            )
             return _empty_chart
 
-    # ── Main analytics summary ───────────────────────────────────────────
-    # Returns request_count, request_cpu_time, uptime, usage_counter,
-    # plan_limit, timegrain — the same payload the FC dashboard charts use.
     analytics = _fetch("press.api.analytics.get")
-
-    # ── Detailed breakdowns (stacked charts / tables) ────────────────────
-    breakdowns = {
-        "request_count_by_path": _fetch(
-            "press.api.analytics.get_request_count_by_path"
-        ),
-        "request_duration_by_path": _fetch(
-            "press.api.analytics.get_request_duration_by_path"
-        ),
-        "avg_request_duration_by_path": _fetch(
-            "press.api.analytics.get_average_request_duration_by_path"
-        ),
-        "job_count_by_method": _fetch(
-            "press.api.analytics.get_background_job_count_by_method"
-        ),
-        "job_duration_by_method": _fetch(
-            "press.api.analytics.get_background_job_duration_by_method"
-        ),
-        "avg_job_duration_by_method": _fetch(
-            "press.api.analytics.get_average_background_job_duration_by_method"
-        ),
-        "background_job_usage": _fetch(
-            "press.api.analytics.get_background_job_usage"
-        ),
-    }
+    request_count_by_path = _fetch("press.api.analytics.get_request_count_by_path")
+    request_duration_by_path = _fetch("press.api.analytics.get_request_duration_by_path")
+    job_count_by_method = _fetch("press.api.analytics.get_background_job_count_by_method")
+    job_duration_by_method = _fetch("press.api.analytics.get_background_job_duration_by_method")
+    background_job_usage = _fetch("press.api.analytics.get_background_job_usage")
 
     return _ok({
+        "usage": usage,
         "analytics": analytics,
-        **breakdowns,
+        "request_count_by_path": request_count_by_path,
+        "request_duration_by_path": request_duration_by_path,
+        "job_count_by_method": job_count_by_method,
+        "job_duration_by_method": job_duration_by_method,
+        "background_job_usage": background_job_usage,
         "filters": {"start": start, "end": end, "timezone": tz},
     })
 
