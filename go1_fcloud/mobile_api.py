@@ -22,8 +22,9 @@
 
 import frappe
 import json
+import requests
 from datetime import datetime, timedelta
-from go1_fcloud.utils import cloud_get, cloud_post, unwrap
+from go1_fcloud.utils import cloud_get, cloud_post, unwrap, get_headers, FCLOUD_BASE_URL
 
 MOBILE_ROLES = ("System Manager", "FCloud","FCloud Admin")
 
@@ -4559,13 +4560,27 @@ def get_site_analytics(
     base_params = {"name": cloud_name, "timezone": tz, "start": start, "end": end}
 
     # ── helper ───────────────────────────────────────────────────────────
+    # Use direct HTTP requests instead of cloud_post so that permission
+    # errors from the analytics endpoints do not call frappe.throw() and
+    # accumulate in _server_messages (the same pattern used by
+    # _fetch_deploy_information).
     _empty_chart = {"datasets": [], "labels": []}
+    headers = get_headers()
 
     def _fetch(endpoint, extra_params=None):
-        """Call a press.api.analytics endpoint; log errors instead of hiding them."""
+        """Call a press.api.analytics endpoint via direct HTTP."""
         try:
             params = {**base_params, **(extra_params or {})}
-            return unwrap(cloud_post(endpoint, params)) or _empty_chart
+            url = f"{FCLOUD_BASE_URL}/api/method/{endpoint}"
+            resp = requests.post(url, headers=headers, json=params, timeout=30)
+            if resp.status_code != 200:
+                frappe.log_error(
+                    f"get_site_analytics:{endpoint}",
+                    f"HTTP {resp.status_code}: {resp.text[:500]}",
+                )
+                return _empty_chart
+            data = resp.json()
+            return data.get("message") or _empty_chart
         except Exception:
             frappe.log_error(
                 f"get_site_analytics:{endpoint}",
