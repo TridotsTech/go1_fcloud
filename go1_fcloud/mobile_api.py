@@ -167,15 +167,38 @@ def login(usr=None, pwd=None):
 
 @frappe.whitelist()
 def get_teams():
-    """Return the list of teams the current user belongs to on Frappe Cloud.
+    """Return outside teams the current user has been invited to on Frappe Cloud.
 
-    Response includes the current (active) team and all switchable teams.
+    Excludes the user's own (internal) team. Response includes the current
+    active team for reference and the filtered outside teams list.
     """
     try:
         _require_role()
         account = unwrap(cloud_get("press.api.account.get")) or {}
         teams = account.get("teams", [])
         current_team = account.get("team", {})
+
+        # Determine the account owner's email to distinguish own vs outside teams
+        account_user = account.get("user") or {}
+        owner_email = (
+            account_user.get("email", "") if isinstance(account_user, dict)
+            else str(account_user)
+        )
+
+        # Filter: only outside teams (teams owned by someone else)
+        outside_teams = []
+        for t in teams:
+            if isinstance(t, dict):
+                team_owner = t.get("user", "")
+                if team_owner and team_owner == owner_email:
+                    continue
+                outside_teams.append({
+                    "name": t.get("name", ""),
+                    "team_title": t.get("team_title", ""),
+                    "user": team_owner,
+                })
+            else:
+                outside_teams.append({"name": str(t), "team_title": "", "user": ""})
 
         return _ok({
             "current_team": {
@@ -185,14 +208,7 @@ def get_teams():
                 "enabled": current_team.get("enabled", False),
                 "parent_team": current_team.get("parent_team", ""),
             } if isinstance(current_team, dict) else {"name": str(current_team)},
-            "teams": [
-                {
-                    "name": t.get("name", "") if isinstance(t, dict) else str(t),
-                    "team_title": t.get("team_title", "") if isinstance(t, dict) else "",
-                    "user": t.get("user", "") if isinstance(t, dict) else "",
-                }
-                for t in teams
-            ],
+            "teams": outside_teams,
         })
     except frappe.ValidationError as e:
         return _err(str(e))
@@ -452,13 +468,14 @@ def _fetch_deploy_information(bench_id):
 
 
 @frappe.whitelist()
-def dashboard(activity_filter=None):
+def dashboard(activity_filter=None, team=None):
     """
     Return a summary of all resources for the mobile home screen,
     including recent activity with optional status filtering.
 
     Args:
       activity_filter: "Success" | "Failed" | None (all)
+      team:            filter by team ID (x_press_team_id)
 
     Response:
       sites:           { total, active, inactive, suspended, updating }
@@ -499,10 +516,13 @@ def dashboard(activity_filter=None):
         }
 
         # --- Counts from local doctypes (only if user has read permission) ---
+        site_filters = {}
+        if team:
+            site_filters["team"] = team
         site_stats = {"total": 0, "active": 0, "inactive": 0, "suspended": 0, "updating": 0}
         if site_perms["can_read"]:
             all_sites = frappe.get_all(
-                "Go1 FCloud Site", fields=["status"], ignore_ifnull=True
+                "Go1 FCloud Site", filters=site_filters, fields=["status"], ignore_ifnull=True
             )
             site_status_counts = {}
             for s in all_sites:
@@ -520,11 +540,14 @@ def dashboard(activity_filter=None):
             }
 
         bench_stats = {"total": 0, "active": 0}
+        bench_filters = {"is_dropped": 0}
+        if team:
+            bench_filters["team"] = team
         if bench_perms["can_read"]:
             all_benches = frappe.get_all(
                 "Go1 FCloud Bench",
                 fields=["status"],
-                filters={"is_dropped": 0},
+                filters=bench_filters,
                 ignore_ifnull=True,
             )
             bench_stats = {
@@ -533,9 +556,12 @@ def dashboard(activity_filter=None):
             }
 
         server_stats = {"total": 0, "active": 0}
+        server_filters = {}
+        if team:
+            server_filters["team"] = team
         if server_perms["can_read"]:
             all_servers = frappe.get_all(
-                "Go1 FCloud Server", fields=["status"], ignore_ifnull=True
+                "Go1 FCloud Server", filters=server_filters, fields=["status"], ignore_ifnull=True
             )
             server_stats = {
                 "total": len(all_servers),
