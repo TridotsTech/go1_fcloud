@@ -624,7 +624,7 @@ def _normalise_activity_status(raw):
 
 
 @frappe.whitelist()
-def get_sites(status_filter=None, search=None, server=None, start=0, limit=20):
+def get_sites(status_filter=None, search=None, server=None, team=None, start=0, limit=20):
     """
     List sites from local Go1 FCloud Site doctype with permission checks.
 
@@ -637,6 +637,7 @@ def get_sites(status_filter=None, search=None, server=None, start=0, limit=20):
                      "Attention" matches both Broken and Suspended sites.
       search:        substring search on site name
       server:        filter by server name
+      team:          filter by team ID (x_press_team_id)
       start:         pagination offset (default 0)
       limit:         page size (default 20)
     """
@@ -656,6 +657,8 @@ def get_sites(status_filter=None, search=None, server=None, start=0, limit=20):
         # Build filters — frappe.get_list applies permission checks automatically
         attention_statuses = ["Broken", "Suspended"]
         filters = {"is_dropped": 0}
+        if team:
+            filters["team"] = team
         if status_filter:
             if status_filter == "Attention":
                 filters["status"] = ("in", attention_statuses)
@@ -690,10 +693,13 @@ def get_sites(status_filter=None, search=None, server=None, start=0, limit=20):
         if search:
             filters["url"] = ("like", f"%{search}%")
 
-        # Status counts (across all sites, before pagination/filters)
+        # Status counts (across all sites for this team, before pagination/filters)
+        count_filters = {"is_dropped": 0}
+        if team:
+            count_filters["team"] = team
         all_sites = frappe.get_list(
             "Go1 FCloud Site",
-            filters={"is_dropped": 0},
+            filters=count_filters,
             fields=["status"],
             ignore_ifnull=True,
         )
@@ -2552,7 +2558,7 @@ def site_verify_dns(site_name, domain):
 
 
 @frappe.whitelist()
-def get_benches(status_filter=None, search=None, server=None, start=0, limit=20):
+def get_benches(status_filter=None, search=None, server=None, team=None, start=0, limit=20):
     """
     List benches from local Go1 FCloud Bench doctype with permission checks.
 
@@ -2564,6 +2570,7 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
       status_filter: "Active" | "Awaiting Deploy" | "Update Available" | None (all)
       search:        substring search on bench title or id
       server:        filter by Go1 FCloud Server link
+      team:          filter by team ID (x_press_team_id)
       start:         pagination offset (default 0)
       limit:         page size (default 20)
     """
@@ -2582,6 +2589,8 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
 
         # Build filters — frappe.get_list applies permission checks automatically
         filters = {"is_dropped": 0}
+        if team:
+            filters["team"] = team
         if status_filter:
             filters["status"] = status_filter
         if server:
@@ -2600,10 +2609,13 @@ def get_benches(status_filter=None, search=None, server=None, start=0, limit=20)
         if search:
             filters["bench"] = ("like", f"%{search}%")
 
-        # Status counts (across all benches, before pagination/filters)
+        # Status counts (across all benches for this team, before pagination/filters)
+        count_filters = {"is_dropped": 0}
+        if team:
+            count_filters["team"] = team
         all_benches = frappe.get_list(
             "Go1 FCloud Bench",
-            filters={"is_dropped": 0},
+            filters=count_filters,
             fields=["status"],
             ignore_ifnull=True,
         )
@@ -4154,7 +4166,7 @@ def delete_bench_config(name, key):
 
 
 @frappe.whitelist()
-def get_servers(status_filter=None, search=None, start=0, limit=20):
+def get_servers(status_filter=None, search=None, team=None, start=0, limit=20):
     """
     List servers from local Go1 FCloud Server doctype with permission checks.
 
@@ -4165,6 +4177,7 @@ def get_servers(status_filter=None, search=None, start=0, limit=20):
     Args:
       status_filter: "Active" | "Pending" | None (all)
       search:        substring search on server name
+      team:          filter by team ID (x_press_team_id)
       start:         pagination offset (default 0)
       limit:         page size (default 20)
     """
@@ -4183,14 +4196,20 @@ def get_servers(status_filter=None, search=None, start=0, limit=20):
 
         # Build filters
         filters = {}
+        if team:
+            filters["team"] = team
         if status_filter:
             filters["status"] = status_filter
         if search:
             filters["server_name"] = ("like", f"%{search}%")
 
-        # Status counts (across all servers, before pagination/filters)
+        # Status counts (across all servers for this team, before pagination/filters)
+        count_filters = {}
+        if team:
+            count_filters["team"] = team
         all_servers = frappe.get_list(
             "Go1 FCloud Server",
+            filters=count_filters,
             fields=["status"],
             ignore_ifnull=True,
         )

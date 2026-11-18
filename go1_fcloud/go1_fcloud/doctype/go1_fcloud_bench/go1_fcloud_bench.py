@@ -788,7 +788,14 @@ def sync_bench_enqueue():
 @frappe.whitelist()
 def sync_bench():
     """Pull all benches from Frappe Cloud and create/update local docs."""
-    from go1_fcloud.utils import cloud_get, cloud_post, unwrap
+    from go1_fcloud.utils import cloud_get, cloud_post, unwrap, get_config
+
+    # Read team ID from configuration for tagging local docs
+    team_id = ""
+    try:
+        team_id = get_config().x_press_team_id or ""
+    except Exception:
+        pass
 
     # ----- Step 1: Fetch cloud benches (critical — abort if this fails) -----
     try:
@@ -837,6 +844,8 @@ def sync_bench():
                     doc.version = bench.get("version", "")
                     if bench_id and not doc.id:
                         doc.id = bench_id
+                    if team_id:
+                        doc.team = team_id
                     doc.app_data = json.dumps(get_apps(doc.id or bench_id))
                     doc.save(ignore_permissions=True)
                     frappe.db.commit()
@@ -855,6 +864,8 @@ def sync_bench():
                 doc.status = bench.get("status", "")
                 doc.version = bench.get("version", "")
                 doc.region = details.get("region", "")
+                if team_id:
+                    doc.team = team_id
                 doc.app_data = json.dumps(get_apps(doc.id))
 
                 for app in details.get("installed_apps", []):

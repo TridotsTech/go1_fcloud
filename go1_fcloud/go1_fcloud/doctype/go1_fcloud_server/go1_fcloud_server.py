@@ -30,7 +30,14 @@ def _extract_server_number(server_id):
 
 
 def sync_server():
-    from go1_fcloud.utils import unwrap
+    from go1_fcloud.utils import unwrap, get_config
+
+    # Read team ID from configuration for tagging local docs
+    team_id = ""
+    try:
+        team_id = get_config().x_press_team_id or ""
+    except Exception:
+        pass
 
     try:
         cloud_servers = unwrap(cloud_get("press.api.server.all")) or []
@@ -95,6 +102,8 @@ def sync_server():
                     doc.region = app.get("cluster", "")
                     if app_id and not doc.server_id:
                         doc.server_id = app_id
+                    if team_id:
+                        doc.team = team_id
                     # App plan
                     if app_plan:
                         doc.price = app_plan.get("price_inr", "")
@@ -124,6 +133,8 @@ def sync_server():
                 doc.server_id = app_id
                 doc.status = app.get("status", "")
                 doc.region = app.get("cluster", "")
+                if team_id:
+                    doc.team = team_id
                 if app_plan:
                     doc.price = app_plan.get("price_inr", "")
                     doc.vcpu = app_plan.get("vcpu", "")

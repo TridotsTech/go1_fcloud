@@ -578,7 +578,14 @@ def sync_site():
     Pull all sites from Frappe Cloud and create/update local docs.
     Called by sync_site_enqueue.
     """
-    from go1_fcloud.utils import cloud_post, cloud_get, unwrap
+    from go1_fcloud.utils import cloud_post, cloud_get, unwrap, get_config
+
+    # Read team ID from configuration for tagging local docs
+    team_id = ""
+    try:
+        team_id = get_config().x_press_team_id or ""
+    except Exception:
+        pass
 
     # ----- Step 1: Fetch cloud sites (critical — abort if this fails) -----
     try:
@@ -627,6 +634,8 @@ def sync_site():
                     doc.status = site.get("status", "")
                     doc.version = site.get("version", "")
                     doc.region = site.get("cluster", "")
+                    if team_id:
+                        doc.team = team_id
 
                     # Mark Archived sites as dropped
                     if doc.status == "Archived":
@@ -676,6 +685,8 @@ def sync_site():
                 doc.version = site.get("version", "")
                 doc.url = site_name
                 doc.group = site.get("group", "")
+                if team_id:
+                    doc.team = team_id
                 doc.plans = json.dumps(site_plans)
                 doc.bench_data = json.dumps(bench_list)
                 doc.site_data = json.dumps(shared_options)

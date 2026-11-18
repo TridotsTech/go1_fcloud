@@ -13,6 +13,7 @@
   "region",
   "server_id",
   "server",
+  "team",
   "column_break_oqey",
   "id",
   "project",
@@ -209,6 +210,13 @@
    "fieldtype": "Long Text",
    "hidden": 1,
    "label": "App Data"
+  },
+  {
+   "fieldname": "team",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Team",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
@@ -219,7 +227,7 @@
    "link_fieldname": "bench_name"
   }
  ],
- "modified": "2026-05-11 15:05:22.071454",
+ "modified": "2026-11-18 12:00:00.000000",
  "modified_by": "sarathigreen4@gmail.com",
  "module": "Go1 Fcloud",
  "name": "Go1 FCloud Bench",
