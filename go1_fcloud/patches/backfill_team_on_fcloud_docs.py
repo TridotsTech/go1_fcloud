@@ -2,6 +2,9 @@
 
 Reads x_press_team_id from Go1 FCloud Configuration and sets it on all
 records where team is NULL or empty.
+
+If the column does not exist yet, the patch skips silently — the next
+sync will populate the field.
 """
 
 import frappe
@@ -13,6 +16,8 @@ def execute():
         return
 
     for dt in ("Go1 FCloud Site", "Go1 FCloud Bench", "Go1 FCloud Server"):
+        if not frappe.db.has_column(dt, "team"):
+            continue
         tbl = frappe.qb.DocType(dt)
         (
             frappe.qb.update(tbl)
